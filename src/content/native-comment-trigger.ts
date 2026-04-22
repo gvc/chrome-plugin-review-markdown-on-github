@@ -73,14 +73,36 @@ function findDiffRow(table: HTMLElement, lineNumber: number): HTMLTableRowElemen
 }
 
 async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolean> {
-  // Strategy 1: GitHub's long-standing js-add-line-comment class
+  // Strategy 1: GitHub's legacy js-add-line-comment class
   const jsBtn = row.querySelector<HTMLElement>('button.js-add-line-comment, .js-add-line-comment');
   if (jsBtn) {
     jsBtn.click();
     return true;
   }
 
-  // Strategy 2: Hover the row to reveal the button, then click it
+  // Strategy 2: GitHub's new React diff UI (2024+)
+  // The comment form lives inline inside td[data-line-number][role="dialog"].
+  // Clicking the td (right-side-diff-cell) opens the inline markers dialog.
+  const diffCell = row.querySelector<HTMLElement>(
+    'td.right-side-diff-cell[data-line-number], td[data-diff-side="right"][data-line-number]'
+  );
+  if (diffCell) {
+    // If already open, no need to click again
+    const alreadyOpen = diffCell.querySelector<HTMLElement>(
+      'div[data-inline-markers][aria-hidden="false"]'
+    );
+    if (alreadyOpen) return true;
+
+    diffCell.click();
+    await delay(200);
+
+    const opened = diffCell.querySelector<HTMLElement>(
+      'div[data-inline-markers][aria-hidden="false"]'
+    );
+    if (opened) return true;
+  }
+
+  // Strategy 3: Hover the row to reveal button, then click
   row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
   row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
 
@@ -89,7 +111,7 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
     cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
   }
 
-  await delay(100);
+  await delay(150);
 
   const hoverBtn = row.querySelector<HTMLElement>(
     'button[aria-label*="comment"], button[data-line], button[data-testid*="comment"]'
@@ -99,11 +121,15 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
     return true;
   }
 
-  // Strategy 3: Click the line number cell directly
+  // Strategy 4: Click the line number cell directly, check for textarea anywhere in row
   const numCell = row.querySelector<HTMLElement>('td.new-diff-line-number, td[data-line-number]');
   if (numCell) {
     numCell.click();
-    await delay(200);
+    await delay(250);
+    if (row.querySelector('textarea')) {
+      return true;
+    }
+    // Also check next sibling row (legacy GitHub)
     const nextRow = row.nextElementSibling;
     if (nextRow?.querySelector('textarea, .comment-form-textarea')) {
       return true;
@@ -119,6 +145,13 @@ function waitForCommentTextarea(
 ): Promise<HTMLTextAreaElement | null> {
   return new Promise((resolve) => {
     const check = (): HTMLTextAreaElement | null => {
+      // New GitHub (2024+): textarea is inline inside the row's td
+      const inlineTA = row.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Markdown value"], textarea[placeholder="Leave a comment"], textarea.prc-Textarea-TextArea-snlco'
+      );
+      if (inlineTA) return inlineTA;
+
+      // Legacy: textarea in a sibling row
       let sibling: Element | null = row.nextElementSibling;
       while (sibling) {
         const ta = sibling.querySelector<HTMLTextAreaElement>(
