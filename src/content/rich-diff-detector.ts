@@ -22,14 +22,23 @@ export function findMarkdownFileContainers(): FileContainer[] {
   }
   if (results.length > 0) return results;
 
-  // Strategy 2: New GitHub DOM — diff entries with hashed CSS module classes
+  // Strategy 2: New GitHub DOM — diff entries with hashed CSS module classes.
+  // The diffEntry element is typically just the file header; the diff table and
+  // rendered article live in sibling elements under the parent.  Use the parent
+  // as the container so scraping and article detection work correctly.
   const allDiffEntries = document.querySelectorAll<HTMLElement>('[class*="diffEntry"]');
   for (const el of allDiffEntries) {
     const filePath = extractFilePathFromContainer(el);
     if (!filePath) continue;
     const lower = filePath.toLowerCase();
     if (MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-      results.push({ container: el, filePath });
+      // Prefer the parent if it contains a table or markdown article; fall back to el.
+      const parent = el.parentElement;
+      const container =
+        (parent && (parent.querySelector('table') || parent.querySelector('article.markdown-body')))
+          ? parent
+          : el;
+      results.push({ container, filePath });
     }
   }
 

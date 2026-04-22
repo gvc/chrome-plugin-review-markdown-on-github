@@ -18,7 +18,9 @@ import {
 import { attachClickHandlers, detachClickHandlers } from './click-handler';
 import { showCommentForm } from './comment-form';
 import { triggerNativeCommentOnLine } from './native-comment-trigger';
-import { enqueueComment, dequeueComments, hasQueued, clearQueue } from './comment-queue';
+import { enqueueComment, dequeueComment, getQueuedComments, hasQueued, getQueuedCount, restoreQueue } from './comment-queue';
+import { parsePRUrl, makePrKey } from '../shared/url-parser';
+import { purgeStale } from './comment-store';
 
 async function initialize(): Promise<void> {
   const { enabled } = await chrome.storage.sync.get('enabled');
@@ -31,6 +33,17 @@ async function initialize(): Promise<void> {
   }
 
   console.debug('[MDR] Payload extracted:', payload.owner, payload.repo, '#' + payload.prNumber);
+
+  // Restore persisted comments and purge stale ones
+  const prUrl = parsePRUrl();
+  if (prUrl) {
+    const prKey = makePrKey(prUrl);
+    const restored = await restoreQueue(prKey);
+    if (restored > 0) {
+      showToast(`${restored} queued comment(s) restored — switch to Source diff to post`);
+    }
+    await purgeStale(7 * 24 * 60 * 60 * 1000);
+  }
 
   const containers = findMarkdownFileContainers();
   console.debug(`[MDR] Found ${containers.length} markdown file(s)`);
@@ -115,39 +128,38 @@ async function processFile(
   // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
     showCommentForm(element, match, payload, (body, m) =>
-      Promise.resolve(openNativeComment(filePath, body, m))
+      openNativeComment(filePath, body, m)
     );
   });
 }
 
-function openNativeComment(
+async function openNativeComment(
   filePath: string,
   body: string,
   match: LineMatch
-): boolean {
-  enqueueComment(filePath, match.lineNumber, body);
-  const queued = 1; // future: could show total count
-  showToast(`${queued} comment queued — switch to Source diff to post it`);
+): Promise<boolean> {
+  await enqueueComment(filePath, match.lineNumber, body);
+  const count = getQueuedCount();
+  showToast(`${count} comment(s) queued — switch to Source diff to post`);
   return true;
 }
 
 async function flushQueue(container: HTMLElement, filePath: string): Promise<void> {
-  const comments = dequeueComments(filePath);
+  const comments = getQueuedComments(filePath);
   if (comments.length === 0) return;
 
-  // Sort by line number so they open in order
-  comments.sort((a, b) => a.lineNumber - b.lineNumber);
+  const sorted = [...comments].sort((a, b) => a.lineNumber - b.lineNumber);
 
-  for (const { lineNumber, body } of comments) {
-    const result = await triggerNativeCommentOnLine(container, lineNumber, body);
-    if (!result.success) {
-      console.warn(`[MDR] Could not trigger comment on line ${lineNumber}:`, result.error);
-      // Re-queue on failure so user doesn't lose the text
-      enqueueComment(filePath, lineNumber, body);
-      showToast(`Could not open comment form for line ${lineNumber}.\n${result.error ?? ''}`);
+  for (const comment of sorted) {
+    const result = await triggerNativeCommentOnLine(container, comment.lineNumber, comment.body);
+    if (result.success) {
+      await dequeueComment(filePath, comment.id);
+    } else {
+      console.warn(`[MDR] Could not trigger comment on line ${comment.lineNumber}:`, result.error);
+      showToast(`Could not open comment form for line ${comment.lineNumber}.\n${result.error ?? ''}`);
+      // Comment stays in storage — will retry on next source diff toggle
     }
-    // Small delay between multiple comments so GitHub's UI can settle
-    if (comments.length > 1) {
+    if (sorted.length > 1) {
       await new Promise((r) => setTimeout(r, 300));
     }
   }
@@ -198,7 +210,7 @@ function reinitialize(): void {
   reinitTimeout = setTimeout(() => {
     clearPayloadCache();
     clearLineMapCaches();
-    clearQueue();
+    // DO NOT clear queue — persisted comments must survive navigation
     initialize();
   }, 300);
 }

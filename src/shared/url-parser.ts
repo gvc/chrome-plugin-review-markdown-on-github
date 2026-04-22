@@ -15,3 +15,7 @@ export function parsePRUrl(pathname: string = window.location.pathname): PRUrl |
     prNumber: parseInt(match[3], 10),
   };
 }
+
+export function makePrKey(pr: PRUrl): string {
+  return `${pr.owner}/${pr.repo}/${pr.prNumber}`;
+}

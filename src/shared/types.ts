@@ -35,3 +35,15 @@ export interface LineMatch {
   confidence: MatchConfidence;
   filePath: string;
 }
+
+export interface PersistedComment {
+  id: string;
+  filePath: string;
+  lineNumber: number;
+  body: string;
+  createdAt: number;
+}
+
+export interface PersistedQueue {
+  [prKey: string]: PersistedComment[];
+}
