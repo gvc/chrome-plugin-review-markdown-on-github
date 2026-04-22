@@ -135,6 +135,28 @@
   font-size: 12px;
 }
 
+/* === Commented element indicator === */
+.mdr-commented {
+  border-left: 3px solid #2da44e;
+  padding-left: 4px;
+  position: relative;
+}
+
+/* === Delete button === */
+.mdr-cf-delete {
+  padding: 4px 12px;
+  border: 1px solid #cf222e;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #cf222e;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mdr-cf-delete:hover {
+  background: #ffebe9;
+}
+
 /* === Confidence badges === */
 .mdr-badge {
   display: inline-block;
@@ -228,6 +250,20 @@
   .mdr-cf-error {
     background: #490202;
     color: #f85149;
+  }
+
+  .mdr-commented {
+    border-left-color: #3fb950;
+  }
+
+  .mdr-cf-delete {
+    background: #21262d;
+    border-color: #f85149;
+    color: #f85149;
+  }
+
+  .mdr-cf-delete:hover {
+    background: #490202;
   }
 
   .mdr-toast {

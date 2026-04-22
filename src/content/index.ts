@@ -16,9 +16,9 @@ import {
   clearCaches as clearLineMapCaches,
 } from './line-mapper';
 import { attachClickHandlers, detachClickHandlers } from './click-handler';
-import { showCommentForm } from './comment-form';
+import { showCommentForm, type OnDeleteComment } from './comment-form';
 import { triggerNativeCommentOnLine } from './native-comment-trigger';
-import { enqueueComment, dequeueComment, getQueuedComments, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
+import { enqueueComment, dequeueComment, getQueuedComments, getCommentForLine, updateComment, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
 import { parsePRUrl, makePrKey } from '../shared/url-parser';
 import { purgeStale } from './comment-store';
 
@@ -132,15 +132,50 @@ async function processFile(
   const lineMap = buildLineMap(raw);
   console.debug(`[MDR] Line map built: ${lineMap.length} lines for ${filePath}`);
 
-  const { elementToLine } = buildElementLineMap(article, lineMap, filePath);
+  const { elementToLine, lineToElement } = buildElementLineMap(article, lineMap, filePath);
   console.debug(`[MDR] Mapped ${elementToLine.size} elements to lines`);
+
+  applyCommentedIndicators(filePath, lineToElement);
 
   // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
-    showCommentForm(element, match, payload, (body, m) =>
-      openNativeComment(filePath, body, m)
-    );
+    const existing = getCommentForLine(filePath, match.lineNumber);
+    if (existing) {
+      showCommentForm(
+        element,
+        match,
+        payload,
+        async (body, m) => {
+          await updateComment(filePath, existing.id, body);
+          showToast('Comment updated');
+          return true;
+        },
+        existing,
+        async (commentId) => {
+          await dequeueComment(filePath, commentId);
+          element.classList.remove('mdr-commented');
+          showToast('Comment removed');
+        }
+      );
+    } else {
+      showCommentForm(element, match, payload, async (body, m) => {
+        const success = await openNativeComment(filePath, body, m);
+        if (success) element.classList.add('mdr-commented');
+        return success;
+      });
+    }
   });
+}
+
+function applyCommentedIndicators(
+  filePath: string,
+  lineToElement: Map<number, HTMLElement>
+): void {
+  const comments = getQueuedComments(filePath);
+  for (const comment of comments) {
+    const el = lineToElement.get(comment.lineNumber);
+    if (el) el.classList.add('mdr-commented');
+  }
 }
 
 async function openNativeComment(

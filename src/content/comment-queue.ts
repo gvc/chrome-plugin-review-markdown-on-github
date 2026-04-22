@@ -1,5 +1,5 @@
 import type { PersistedComment } from '../shared/types';
-import { loadComments, saveComment, removeComment, onStorageChanged } from './comment-store';
+import { loadComments, saveComment, removeComment, updateStoredComment, onStorageChanged } from './comment-store';
 
 // In-memory cache — fast synchronous reads, backed by chrome.storage.local
 const queue = new Map<string, PersistedComment[]>();
@@ -22,6 +22,17 @@ export async function restoreQueue(prKey: string): Promise<number> {
 }
 
 export async function enqueueComment(filePath: string, lineNumber: number, body: string): Promise<void> {
+  const list = queue.get(filePath) ?? [];
+  const existing = list.find((c) => c.lineNumber === lineNumber);
+
+  if (existing) {
+    // One comment per line — update in-place
+    existing.body = body;
+    existing.createdAt = Date.now();
+    await updateStoredComment(currentPrKey, existing.id, body);
+    return;
+  }
+
   const comment: PersistedComment = {
     id: crypto.randomUUID(),
     filePath,
@@ -33,9 +44,22 @@ export async function enqueueComment(filePath: string, lineNumber: number, body:
   // Write-ahead: persist BEFORE updating cache
   await saveComment(currentPrKey, comment);
 
-  const list = queue.get(filePath) ?? [];
   list.push(comment);
   queue.set(filePath, list);
+}
+
+export function getCommentForLine(filePath: string, lineNumber: number): PersistedComment | null {
+  return queue.get(filePath)?.find((c) => c.lineNumber === lineNumber) ?? null;
+}
+
+export async function updateComment(filePath: string, commentId: string, newBody: string): Promise<void> {
+  const list = queue.get(filePath);
+  if (!list) return;
+  const comment = list.find((c) => c.id === commentId);
+  if (!comment) return;
+  comment.body = newBody;
+  comment.createdAt = Date.now();
+  await updateStoredComment(currentPrKey, commentId, newBody);
 }
 
 export async function dequeueComment(filePath: string, commentId: string): Promise<void> {

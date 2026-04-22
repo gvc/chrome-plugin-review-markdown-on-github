@@ -27,6 +27,17 @@ export async function saveComment(prKey: string, comment: PersistedComment): Pro
   await writeAll(data);
 }
 
+export async function updateStoredComment(prKey: string, commentId: string, newBody: string): Promise<void> {
+  const data = await readAll();
+  const list = data[prKey];
+  if (!list) return;
+  const comment = list.find((c) => c.id === commentId);
+  if (!comment) return;
+  comment.body = newBody;
+  comment.createdAt = Date.now();
+  await writeAll(data);
+}
+
 export async function removeComment(prKey: string, commentId: string): Promise<void> {
   const data = await readAll();
   const list = data[prKey];

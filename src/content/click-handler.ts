@@ -60,6 +60,14 @@ function showButton(target: HTMLElement): void {
   const btn = getOrCreateHoverButton();
   const rect = target.getBoundingClientRect();
 
+  if (target.classList.contains('mdr-commented')) {
+    btn.textContent = '✎';
+    btn.title = 'Edit review comment';
+  } else {
+    btn.textContent = '+';
+    btn.title = 'Add review comment';
+  }
+
   btn.style.display = 'flex';
   btn.style.top = `${window.scrollY + rect.top + rect.height / 2 - 12}px`;
   btn.style.left = `${window.scrollX + rect.left - 32}px`;
