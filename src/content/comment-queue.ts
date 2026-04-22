@@ -63,6 +63,10 @@ export function getQueuedCount(): number {
   return count;
 }
 
+export function getAllQueued(): Map<string, PersistedComment[]> {
+  return queue;
+}
+
 // Sync cache when another tab writes to storage
 onStorageChanged((prKey, comments) => {
   if (prKey !== currentPrKey) return;

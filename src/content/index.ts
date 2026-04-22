@@ -18,7 +18,7 @@ import {
 import { attachClickHandlers, detachClickHandlers } from './click-handler';
 import { showCommentForm } from './comment-form';
 import { triggerNativeCommentOnLine } from './native-comment-trigger';
-import { enqueueComment, dequeueComment, getQueuedComments, hasQueued, getQueuedCount, restoreQueue } from './comment-queue';
+import { enqueueComment, dequeueComment, getQueuedComments, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
 import { parsePRUrl, makePrKey } from '../shared/url-parser';
 import { purgeStale } from './comment-store';
 
@@ -91,6 +91,16 @@ async function initialize(): Promise<void> {
         clearScrapedCache(filePath);
         scrapeRawFromSourceDiff(container, filePath);
         if (article) detachClickHandlers(article);
+        // Dump all queued comments to console as last-resort backup
+        const allQueued = getAllQueued();
+        if (allQueued.size > 0) {
+          console.info('[MDR] All queued comments (backup dump):');
+          for (const [fp, comments] of allQueued) {
+            for (const c of comments) {
+              console.info(`[MDR]   ${fp}:${c.lineNumber} — ${c.body}`);
+            }
+          }
+        }
         // Flush any queued comments for this file
         if (hasQueued(filePath)) {
           await flushQueue(container, filePath);
@@ -161,6 +171,15 @@ async function flushQueue(container: HTMLElement, filePath: string): Promise<voi
     }
     if (sorted.length > 1) {
       await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  // Last resort: dump any remaining comments to console so they're never truly lost
+  const remaining = getQueuedComments(filePath);
+  if (remaining.length > 0) {
+    console.warn(`[MDR] ${remaining.length} comment(s) could not be posted for ${filePath}. Dumping to console as backup:`);
+    for (const c of remaining) {
+      console.warn(`[MDR]   Line ${c.lineNumber}: ${c.body}`);
     }
   }
 }
