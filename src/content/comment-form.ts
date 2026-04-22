@@ -26,7 +26,7 @@ export function showCommentForm(
 
   form.innerHTML = `
     <div class="mdr-cf-header">
-      <span class="mdr-cf-title">Comment on <strong>${escapeHtml(match.filePath)}</strong> line ${match.lineNumber}</span>
+      <span class="mdr-cf-title">Draft comment on <strong>${escapeHtml(match.filePath)}</strong> line ${match.lineNumber}</span>
       <span class="mdr-cf-confidence" title="Match confidence: ${match.confidence}">${confidenceBadge(match.confidence)}</span>
     </div>
     <div class="mdr-cf-context">${escapeHtml(truncated)}</div>
@@ -34,7 +34,7 @@ export function showCommentForm(
     <div class="mdr-cf-actions">
       <span class="mdr-cf-hint">Ctrl+Enter to submit</span>
       <button class="mdr-cf-cancel">Cancel</button>
-      <button class="mdr-cf-submit">Comment</button>
+      <button class="mdr-cf-submit">Save Draft</button>
     </div>
     <div class="mdr-cf-error" style="display:none"></div>
   `;
@@ -72,26 +72,26 @@ export function showCommentForm(
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Submitting...';
+    submitBtn.textContent = 'Saving...';
     errorDiv.style.display = 'none';
 
     try {
       const success = await onSubmit(body, match, payload);
       if (success) {
         dismissCommentForm();
-        showToast('Comment posted');
+        showToast('Draft saved');
         // Add visual indicator to anchor
         anchorElement.classList.add('mdr-has-comment');
       } else {
         showError(errorDiv, 'Failed to post comment. Try again.');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Comment';
+        submitBtn.textContent = 'Save Draft';
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       showError(errorDiv, msg);
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Comment';
+      submitBtn.textContent = 'Save Draft';
     }
   }
 }

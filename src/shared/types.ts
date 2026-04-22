@@ -55,3 +55,17 @@ export interface FileContext {
   lineToElement: Map<number, HTMLElement>;
   comments: PRComment[];
 }
+
+/** Composite key to scope drafts to a specific PR: "owner/repo/prNumber". */
+export type PRKey = `${string}/${string}/${number}`;
+
+/** A single draft comment saved locally (not yet posted to GitHub). */
+export interface DraftComment {
+  id: string;
+  body: string;
+  filePath: string;
+  lineNumber: number;
+  confidence: MatchConfidence;
+  commitOid: string;
+  createdAt: string;
+}

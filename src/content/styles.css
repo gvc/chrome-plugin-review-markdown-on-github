@@ -250,6 +250,169 @@
   transform: translateY(0);
 }
 
+/* === Draft badges (on rich diff elements) === */
+.mdr-draft-badge {
+  position: absolute;
+  top: 0;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #fff8c5;
+  color: #9a6700;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  z-index: 5;
+  transition: background 0.15s;
+}
+
+.mdr-draft-badge:hover {
+  background: #fae17d;
+}
+
+/* === Draft thread (on rich diff) === */
+.mdr-draft-thread {
+  margin: 8px 0;
+  border: 1px dashed #d4a72c;
+  border-radius: 6px;
+  background: #fffbeb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* === Source diff draft row === */
+.mdr-source-draft {
+  background: #fffbeb !important;
+}
+
+.mdr-source-draft-cell {
+  padding: 12px 16px !important;
+  border-top: 1px dashed #d4a72c;
+  border-bottom: 1px dashed #d4a72c;
+}
+
+.mdr-source-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mdr-source-draft-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9a6700;
+}
+
+.mdr-source-draft-body {
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #e5dbb5;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #24292f;
+  white-space: pre-wrap;
+}
+
+.mdr-source-draft-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mdr-source-draft-edit,
+.mdr-source-draft-delete {
+  padding: 3px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #24292f;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.mdr-source-draft-edit:hover {
+  background: #eaeef2;
+}
+
+.mdr-source-draft-delete:hover {
+  background: #ffebe9;
+  border-color: #f85149;
+  color: #82071e;
+}
+
+.mdr-source-draft-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid #d4a72c;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.mdr-source-draft-save {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #d4a72c;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+.mdr-source-draft-save:hover {
+  background: #b8941f;
+}
+
+/* === Draft banner (for collapsed hunks) === */
+.mdr-draft-banner {
+  padding: 8px 16px;
+  background: #fff8c5;
+  border-bottom: 1px solid #e5dbb5;
+  color: #9a6700;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* === Submit All FAB === */
+.mdr-submit-all-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 24px;
+  background: #2da44e;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 99999;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.mdr-submit-all-btn:hover {
+  background: #218838;
+  transform: translateY(-1px);
+}
+
+.mdr-submit-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* === Dark mode support === */
 @media (prefers-color-scheme: dark) {
   .mdr-hover-btn {
@@ -322,5 +485,58 @@
   .mdr-toast {
     background: #c9d1d9;
     color: #0d1117;
+  }
+
+  .mdr-draft-badge {
+    background: #3d2e00;
+    color: #d4a72c;
+  }
+
+  .mdr-draft-badge:hover {
+    background: #4d3a00;
+  }
+
+  .mdr-draft-thread {
+    background: #1c1500;
+    border-color: #5c4813;
+  }
+
+  .mdr-source-draft {
+    background: #1c1500 !important;
+  }
+
+  .mdr-source-draft-cell {
+    border-color: #5c4813;
+  }
+
+  .mdr-source-draft-body {
+    background: #0d1117;
+    border-color: #5c4813;
+    color: #c9d1d9;
+  }
+
+  .mdr-source-draft-edit,
+  .mdr-source-draft-delete {
+    background: #21262d;
+    border-color: #30363d;
+    color: #c9d1d9;
+  }
+
+  .mdr-source-draft-delete:hover {
+    background: #490202;
+    border-color: #f85149;
+    color: #f85149;
+  }
+
+  .mdr-source-draft-textarea {
+    background: #0d1117;
+    border-color: #5c4813;
+    color: #c9d1d9;
+  }
+
+  .mdr-draft-banner {
+    background: #1c1500;
+    border-color: #5c4813;
+    color: #d4a72c;
   }
 }
