@@ -47,6 +47,13 @@ function buildRawUrls(filePath: string, payload: GitHubPayload): string[] {
     );
   }
 
+  // From head branch name (needed for newly added files)
+  if (payload.headBranch) {
+    urls.push(
+      `https://github.com/${payload.owner}/${payload.repo}/raw/${payload.headBranch}/${filePath}`
+    );
+  }
+
   // Fallback: blob URL pattern
   urls.push(
     `https://github.com/${payload.owner}/${payload.repo}/raw/HEAD/${filePath}`

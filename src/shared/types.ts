@@ -4,6 +4,8 @@ export interface GitHubPayload {
   prNumber: number;
   headCommitOid: string;
   baseCommitOid: string;
+  headBranch: string;
+  pullRequestId: string; // GraphQL node ID (e.g. "PR_kwDO...")
   currentUser: { login: string; avatarUrl: string } | null;
   diffEntries: DiffEntry[];
 }

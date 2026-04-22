@@ -10,17 +10,59 @@ const MD_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkd', '.mkdn'];
  */
 export function findMarkdownFileContainers(): FileContainer[] {
   const results: FileContainer[] = [];
-  const fileElements = document.querySelectorAll<HTMLElement>('.file[data-tagsearch-path]');
 
-  for (const el of fileElements) {
+  // Strategy 1: Legacy selector (older GitHub DOM)
+  const legacyElements = document.querySelectorAll<HTMLElement>('.file[data-tagsearch-path]');
+  for (const el of legacyElements) {
     const path = el.getAttribute('data-tagsearch-path') ?? '';
     const lower = path.toLowerCase();
     if (MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
       results.push({ container: el, filePath: path });
     }
   }
+  if (results.length > 0) return results;
+
+  // Strategy 2: New GitHub DOM — diff entries with hashed CSS module classes
+  const allDiffEntries = document.querySelectorAll<HTMLElement>('[class*="diffEntry"]');
+  for (const el of allDiffEntries) {
+    const filePath = extractFilePathFromContainer(el);
+    if (!filePath) continue;
+    const lower = filePath.toLowerCase();
+    if (MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+      results.push({ container: el, filePath });
+    }
+  }
 
   return results;
+}
+
+/**
+ * Extract file path from a diff entry container by looking at header links/text.
+ */
+function extractFilePathFromContainer(container: HTMLElement): string | null {
+  // Look for a link or element with a title/text that looks like a file path
+  const candidates = container.querySelectorAll<HTMLElement>(
+    'a[title], a[href*="#diff"], [title], button[aria-label]'
+  );
+  for (const el of candidates) {
+    const text = (el.getAttribute('title') || el.textContent || '').trim()
+      // Strip invisible LRM/RLM unicode markers GitHub adds
+      .replace(/[\u200E\u200F\u200B]/g, '');
+    if (text && text.includes('.') && !text.includes(' ')) {
+      return text;
+    }
+  }
+
+  // Fallback: find any element whose text looks like a file path
+  const allText = container.querySelectorAll<HTMLElement>('a, span');
+  for (const el of allText) {
+    const text = (el.textContent || '').trim().replace(/[\u200E\u200F\u200B]/g, '');
+    if (text && /^[\w./-]+\.\w+$/.test(text)) {
+      return text;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -39,7 +81,7 @@ export function isRichDiffActive(container: HTMLElement): boolean {
 export function getMarkdownArticle(container: HTMLElement): HTMLElement | null {
   // Primary selector: article with markdown-body class
   const article = container.querySelector<HTMLElement>(
-    'article.markdown-body, .js-file-content article, .js-file-content .markdown-body'
+    'article.markdown-body, .js-file-content article, .js-file-content .markdown-body, .prose-diff article.markdown-body'
   );
   return article;
 }
@@ -53,7 +95,9 @@ export function observeRichDiffToggle(
   callback: (active: boolean) => void
 ): MutationObserver {
   const contentDiv =
-    container.querySelector('.js-file-content') ?? container;
+    container.querySelector('.js-file-content') ??
+    container.querySelector('.prose-diff') ??
+    container;
 
   const observer = new MutationObserver(() => {
     callback(isRichDiffActive(container));

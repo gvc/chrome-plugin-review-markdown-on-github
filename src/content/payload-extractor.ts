@@ -47,20 +47,27 @@ function parseEmbeddedData(data: Record<string, unknown>): GitHubPayload | null 
     const owner = repo.ownerLogin ?? repo.owner?.login ?? '';
     const repoName = repo.name ?? '';
     const prNumber = pr.number ?? 0;
+    const headBranch = pr.headBranch ?? pr.headRefName ?? '';
+
+    // GraphQL node ID — GitHub embeds this as pr.id (base64 "PR_kwDO...")
+    const pullRequestId = pr.id ?? pr.node_id ?? '';
 
     const headCommitOid =
       comparison?.headCommitOid ??
       comparison?.headSha ??
+      comparison?.fullDiff?.headOid ??
       pr.headRefOid ??
       '';
 
     const baseCommitOid =
       comparison?.baseCommitOid ??
       comparison?.baseSha ??
+      comparison?.fullDiff?.baseOid ??
       pr.baseRefOid ??
       '';
 
-    const diffEntries: DiffEntry[] = (payload.diffEntries ?? payload.files ?? [])
+    const rawEntries = payload.diffEntries ?? payload.diffSummaries ?? payload.files ?? [];
+    const diffEntries: DiffEntry[] = rawEntries
       .map((entry: Record<string, unknown>) => ({
         path: (entry.path ?? entry.filename ?? '') as string,
         rawBlobUrl: (entry.rawBlobUrl ?? entry.raw_url ?? null) as string | null,
@@ -73,6 +80,8 @@ function parseEmbeddedData(data: Record<string, unknown>): GitHubPayload | null 
       prNumber,
       headCommitOid,
       baseCommitOid,
+      headBranch,
+      pullRequestId: typeof pullRequestId === 'string' ? pullRequestId : '',
       currentUser: currentUser
         ? {
             login: currentUser.login ?? '',
@@ -92,7 +101,13 @@ function findNestedPayload(data: any): any {
   if (data.pullRequest || data.pull_request) return data;
 
   // Nested under .payload
-  if (data.payload) return findNestedPayload(data.payload);
+  if (data.payload) {
+    // New GitHub structure: payload.pullRequestsChangesRoute
+    if (data.payload.pullRequestsChangesRoute) {
+      return data.payload.pullRequestsChangesRoute;
+    }
+    return findNestedPayload(data.payload);
+  }
 
   // Nested under .props.initialPayload
   if (data.props?.initialPayload) return data.props.initialPayload;
@@ -121,6 +136,8 @@ function buildFallbackPayload(): GitHubPayload | null {
     prNumber: prUrl.prNumber,
     headCommitOid: headSha ?? '',
     baseCommitOid: '',
+    headBranch: '',
+    pullRequestId: '',
     currentUser: null,
     diffEntries: [],
   };
