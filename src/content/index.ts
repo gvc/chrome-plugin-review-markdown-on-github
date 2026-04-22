@@ -1,4 +1,4 @@
-import { GitHubPayload, LineMatch, DraftComment, PRKey } from '../shared/types';
+import { GitHubPayload, LineMatch } from '../shared/types';
 import { extractPayload, clearPayloadCache } from './payload-extractor';
 import {
   findMarkdownFileContainers,
@@ -7,41 +7,20 @@ import {
   observeRichDiffToggle,
   markProcessed,
   isProcessed,
+  switchToSourceDiff,
+  switchToRichDiff,
 } from './rich-diff-detector';
 import {
-  fetchRawMarkdown,
+  scrapeRawFromSourceDiff,
   buildLineMap,
   buildElementLineMap,
   clearCaches as clearLineMapCaches,
 } from './line-mapper';
 import { attachClickHandlers, detachClickHandlers } from './click-handler';
 import { showCommentForm } from './comment-form';
-import { fetchPRComments, renderCommentBadges, renderDraftBadges } from './comment-overlay';
-import { buildPRKey, saveDraft, getDrafts, deleteDraft } from './draft-storage';
-import { renderDraftsInSourceDiff, clearDraftRenderings } from './source-diff-renderer';
-import { installCsrfInterceptor, submitComment } from './comment-submitter';
-
-async function saveDraftComment(
-  body: string,
-  match: LineMatch,
-  payload: GitHubPayload
-): Promise<boolean> {
-  const prKey = buildPRKey(payload);
-  const draft: DraftComment = {
-    id: crypto.randomUUID(),
-    body,
-    filePath: match.filePath,
-    lineNumber: match.lineNumber,
-    confidence: match.confidence,
-    commitOid: payload.headCommitOid,
-    createdAt: new Date().toISOString(),
-  };
-  await saveDraft(prKey, draft);
-  return true;
-}
+import { triggerNativeCommentOnLine } from './native-comment-trigger';
 
 async function initialize(): Promise<void> {
-  // Check if extension is enabled
   const { enabled } = await chrome.storage.sync.get('enabled');
   if (enabled === false) return;
 
@@ -53,11 +32,6 @@ async function initialize(): Promise<void> {
 
   console.debug('[MDR] Payload extracted:', payload.owner, payload.repo, '#' + payload.prNumber);
 
-  // Fetch existing comments once
-  const comments = await fetchPRComments(payload);
-  console.debug(`[MDR] Fetched ${comments.length} existing comments`);
-
-  // Process all markdown file containers
   const containers = findMarkdownFileContainers();
   console.debug(`[MDR] Found ${containers.length} markdown file(s)`);
 
@@ -65,143 +39,101 @@ async function initialize(): Promise<void> {
     if (isProcessed(container)) continue;
 
     if (isRichDiffActive(container)) {
-      await processFile(container, filePath, payload, comments);
+      // Rich diff is already active — we need raw markdown to map elements.
+      // Briefly switch to source diff to scrape, then switch back.
+      await scrapeViaToggle(container, filePath);
+      await processFile(container, filePath, payload);
     } else {
-      // Source diff is active initially — render draft badges in source diff view
-      const prKey = buildPRKey(payload);
-      renderDraftsInSourceDiff(container, filePath, prKey);
+      // Source diff is active — scrape raw markdown now while table is in DOM.
+      scrapeRawFromSourceDiff(container, filePath);
     }
 
-    // Watch for rich diff toggle
+    // Watch for future rich/source diff toggles
     observeRichDiffToggle(container, async (active) => {
       const article = getMarkdownArticle(container);
       if (active && article) {
-        clearDraftRenderings(container);
-        await processFile(container, filePath, payload, comments);
+        // Switched to rich diff — ensure we have raw markdown
+        const raw = scrapeRawFromSourceDiff(container, filePath);
+        if (!raw) {
+          console.warn(`[MDR] No cached raw markdown for ${filePath} after toggle`);
+          return;
+        }
+        await processFile(container, filePath, payload);
       } else {
+        // Switched to source diff — re-scrape (diff may have expanded)
+        scrapeRawFromSourceDiff(container, filePath);
         if (article) detachClickHandlers(article);
-        const prKey = buildPRKey(payload);
-        renderDraftsInSourceDiff(container, filePath, prKey);
       }
     });
 
     markProcessed(container);
   }
+}
 
-  await renderSubmitAllButton(payload);
+async function scrapeViaToggle(container: HTMLElement, filePath: string): Promise<void> {
+  // Quickly toggle to source diff, scrape, toggle back
+  const switched = await switchToSourceDiff(container);
+  if (!switched) {
+    console.warn(`[MDR] Could not switch to source diff to scrape ${filePath}`);
+    return;
+  }
+
+  scrapeRawFromSourceDiff(container, filePath);
+
+  // Restore rich diff view
+  await switchToRichDiff(container);
 }
 
 async function processFile(
   container: HTMLElement,
   filePath: string,
-  payload: GitHubPayload,
-  comments: import('../shared/types').PRComment[]
+  payload: GitHubPayload
 ): Promise<void> {
   const article = getMarkdownArticle(container);
   if (!article) return;
 
   console.debug(`[MDR] Processing ${filePath}`);
 
-  // Fetch raw markdown and build line map
-  const raw = await fetchRawMarkdown(filePath, payload);
+  const raw = scrapeRawFromSourceDiff(container, filePath);
   if (!raw) {
-    console.warn(`[MDR] Could not fetch raw markdown for ${filePath}`);
+    console.warn(`[MDR] No raw markdown available for ${filePath}`);
     return;
   }
 
   const lineMap = buildLineMap(raw);
   console.debug(`[MDR] Line map built: ${lineMap.length} lines for ${filePath}`);
 
-  // Build element-to-line mapping
-  const { elementToLine, lineToElement } = buildElementLineMap(article, lineMap, filePath);
+  const { elementToLine } = buildElementLineMap(article, lineMap, filePath);
   console.debug(`[MDR] Mapped ${elementToLine.size} elements to lines`);
 
-  // Log mappings for debugging
-  for (const [el, match] of elementToLine) {
-    const preview = (el.textContent ?? '').slice(0, 50);
-    console.debug(`[MDR]   L${match.lineNumber} [${match.confidence}] "${preview}..."`);
-  }
-
-  // Attach click handlers for saving draft comments
+  // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
-    showCommentForm(element, match, payload, (body, m, p) =>
-      saveDraftComment(body, m, p)
+    showCommentForm(element, match, payload, (body, m) =>
+      openNativeComment(container, body, m)
     );
   });
-
-  // Show existing comments
-  renderCommentBadges(comments, filePath, lineToElement);
-
-  // Show draft badges on rich diff elements
-  const prKey = buildPRKey(payload);
-  const drafts = await getDrafts(prKey);
-  renderDraftBadges(drafts, filePath, lineToElement);
 }
 
-// --- Submit All Drafts FAB ---
+async function openNativeComment(
+  container: HTMLElement,
+  body: string,
+  match: LineMatch
+): Promise<boolean> {
+  const result = await triggerNativeCommentOnLine(container, match.lineNumber, body);
 
-let submitAllBtn: HTMLButtonElement | null = null;
-
-async function renderSubmitAllButton(payload: GitHubPayload): Promise<void> {
-  removeSubmitAllButton();
-  const prKey = buildPRKey(payload);
-  const drafts = await getDrafts(prKey);
-  if (drafts.length === 0) return;
-
-  const btn = document.createElement('button');
-  btn.className = 'mdr-submit-all-btn';
-  btn.textContent = `Submit ${drafts.length} Draft(s)`;
-  btn.addEventListener('click', () => submitAllDrafts(payload));
-  document.body.appendChild(btn);
-  submitAllBtn = btn;
-}
-
-function removeSubmitAllButton(): void {
-  if (submitAllBtn) {
-    submitAllBtn.remove();
-    submitAllBtn = null;
-  }
-}
-
-async function submitAllDrafts(payload: GitHubPayload): Promise<void> {
-  const prKey = buildPRKey(payload);
-  const drafts = await getDrafts(prKey);
-  if (drafts.length === 0) return;
-  if (!submitAllBtn) return;
-
-  submitAllBtn.disabled = true;
-  let posted = 0;
-  const errors: string[] = [];
-
-  for (const draft of drafts) {
-    submitAllBtn.textContent = `Submitting ${posted + 1}/${drafts.length}...`;
+  if (!result.success) {
+    console.warn('[MDR] Native comment trigger failed:', result.error);
+    // Copy text to clipboard as fallback
     try {
-      const match: LineMatch = {
-        lineNumber: draft.lineNumber,
-        confidence: draft.confidence,
-        filePath: draft.filePath,
-      };
-      const success = await submitComment(draft.body, match, payload);
-      if (success) {
-        await deleteDraft(prKey, draft.id);
-        posted++;
-      } else {
-        errors.push(`Line ${draft.lineNumber} in ${draft.filePath}: failed`);
-      }
-    } catch (err) {
-      errors.push(`Line ${draft.lineNumber} in ${draft.filePath}: ${err instanceof Error ? err.message : 'unknown'}`);
+      await navigator.clipboard.writeText(body);
+      showToast(`Could not open comment form. Text copied to clipboard.\n${result.error ?? ''}`);
+    } catch {
+      showToast(result.error ?? 'Could not open GitHub comment form.');
     }
+    return false;
   }
 
-  if (posted > 0) {
-    showToast(`${posted} comment(s) posted`);
-  }
-  if (errors.length > 0) {
-    showToast(`${errors.length} comment(s) failed`);
-  }
-
-  // Refresh button
-  await renderSubmitAllButton(payload);
+  return true;
 }
 
 function showToast(message: string): void {
@@ -213,17 +145,15 @@ function showToast(message: string): void {
   setTimeout(() => {
     toast.classList.remove('mdr-toast-visible');
     setTimeout(() => toast.remove(), 300);
-  }, 2000);
+  }, 3000);
 }
 
 // --- SPA navigation handling ---
 
 function setupNavigationListeners(): void {
-  // GitHub uses Turbo for SPA navigation
   document.addEventListener('turbo:load', reinitialize);
   window.addEventListener('popstate', reinitialize);
 
-  // Also observe DOM for dynamically loaded file containers
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
@@ -231,7 +161,6 @@ function setupNavigationListeners(): void {
           node.classList?.contains('file') ||
           node.className?.includes?.('diffEntry')
         )) {
-          // New file container appeared (lazy load)
           reinitialize();
           return;
         }
@@ -248,18 +177,15 @@ function setupNavigationListeners(): void {
 let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function reinitialize(): void {
-  // Debounce reinit
   if (reinitTimeout) clearTimeout(reinitTimeout);
   reinitTimeout = setTimeout(() => {
     clearPayloadCache();
     clearLineMapCaches();
-    removeSubmitAllButton();
     initialize();
   }, 300);
 }
 
 // --- Bootstrap ---
 
-installCsrfInterceptor();
 initialize();
 setupNavigationListeners();

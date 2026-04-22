@@ -122,3 +122,118 @@ export function markProcessed(container: HTMLElement): void {
 export function isProcessed(container: HTMLElement): boolean {
   return container.hasAttribute(PROCESSED_ATTR);
 }
+
+// --- Diff view toggling ---
+
+/**
+ * Find the toggle button for switching between source diff and rich diff.
+ * GitHub uses various button styles across versions.
+ */
+export function findDiffToggleButton(
+  container: HTMLElement,
+  targetMode: 'source' | 'rich'
+): HTMLElement | null {
+  const sourceLabels = ['Display the source diff', 'Source diff', 'Source'];
+  const richLabels = ['Display the rich diff', 'Rich diff', 'Rich'];
+  const labels = targetMode === 'source' ? sourceLabels : richLabels;
+
+  // Strategy 1: aria-label or title attributes
+  for (const label of labels) {
+    const btn = container.querySelector<HTMLElement>(
+      `button[aria-label="${label}"], button[title="${label}"]`
+    );
+    if (btn) return btn;
+  }
+
+  // Strategy 2: button text content
+  const buttons = container.querySelectorAll<HTMLElement>('button');
+  for (const btn of buttons) {
+    const text = (btn.textContent ?? '').trim().toLowerCase();
+    if (targetMode === 'source' && (text === 'source' || text === 'source diff')) return btn;
+    if (targetMode === 'rich' && (text === 'rich diff' || text === 'rich')) return btn;
+  }
+
+  // Strategy 3: tab/segmented control roles
+  const tabs = container.querySelectorAll<HTMLElement>('[role="tab"]');
+  for (const tab of tabs) {
+    const text = (tab.textContent ?? '').trim().toLowerCase();
+    if (targetMode === 'source' && text.includes('source')) return tab;
+    if (targetMode === 'rich' && text.includes('rich')) return tab;
+  }
+
+  return null;
+}
+
+/**
+ * Switch the file container to source diff view.
+ * Returns a promise that resolves when the table is visible, or rejects on timeout.
+ */
+export function switchToSourceDiff(container: HTMLElement): Promise<boolean> {
+  if (!isRichDiffActive(container)) return Promise.resolve(true); // already source
+
+  const btn = findDiffToggleButton(container, 'source');
+  if (!btn) return Promise.resolve(false);
+
+  btn.click();
+  return waitForSourceDiff(container, 3000);
+}
+
+/**
+ * Switch the file container to rich diff view.
+ * Returns a promise that resolves when the article is visible, or false on timeout.
+ */
+export function switchToRichDiff(container: HTMLElement): Promise<boolean> {
+  if (isRichDiffActive(container)) return Promise.resolve(true); // already rich
+
+  const btn = findDiffToggleButton(container, 'rich');
+  if (!btn) return Promise.resolve(false);
+
+  btn.click();
+  return waitForRichDiff(container, 3000);
+}
+
+function waitForSourceDiff(container: HTMLElement, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (container.querySelector('table')) {
+      resolve(true);
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (container.querySelector('table')) {
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+    observer.observe(container, { childList: true, subtree: true });
+
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(false);
+    }, timeoutMs);
+  });
+}
+
+function waitForRichDiff(container: HTMLElement, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (isRichDiffActive(container)) {
+      resolve(true);
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (isRichDiffActive(container)) {
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+    observer.observe(container, { childList: true, subtree: true, attributes: true });
+
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(false);
+    }, timeoutMs);
+  });
+}

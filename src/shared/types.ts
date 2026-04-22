@@ -35,37 +35,3 @@ export interface LineMatch {
   confidence: MatchConfidence;
   filePath: string;
 }
-
-export interface PRComment {
-  id: number;
-  body: string;
-  path: string;
-  line: number | null;
-  side: 'LEFT' | 'RIGHT';
-  user: { login: string; avatarUrl: string };
-  createdAt: string;
-  updatedAt: string;
-  inReplyToId: number | null;
-}
-
-export interface FileContext {
-  filePath: string;
-  article: HTMLElement;
-  lineMap: LineMapEntry[];
-  lineToElement: Map<number, HTMLElement>;
-  comments: PRComment[];
-}
-
-/** Composite key to scope drafts to a specific PR: "owner/repo/prNumber". */
-export type PRKey = `${string}/${string}/${number}`;
-
-/** A single draft comment saved locally (not yet posted to GitHub). */
-export interface DraftComment {
-  id: string;
-  body: string;
-  filePath: string;
-  lineNumber: number;
-  confidence: MatchConfidence;
-  commitOid: string;
-  createdAt: string;
-}

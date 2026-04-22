@@ -4,17 +4,11 @@
   "version": "0.1.0",
   "description": "Comment on rendered markdown in GitHub PR rich diff view",
   "permissions": [
-    "storage",
-    "activeTab"
+    "storage"
   ],
   "host_permissions": [
-    "https://github.com/*",
-    "https://api.github.com/*"
+    "https://github.com/*"
   ],
-  "background": {
-    "service_worker": "background/index.js",
-    "type": "module"
-  },
   "content_scripts": [
     {
       "matches": ["https://github.com/*/*/pull/*/files*", "https://github.com/*/*/pull/*/changes*"],

@@ -1,65 +1,77 @@
-import { GitHubPayload, LineMapEntry, LineMatch } from '../shared/types';
+import { LineMapEntry, LineMatch } from '../shared/types';
 
-const rawCache = new Map<string, string>();
+const scrapedCache = new Map<string, string>();
 const lineMapCache = new Map<string, LineMapEntry[]>();
 
-// --- Fetching raw markdown ---
+// --- Scraping raw markdown from source diff DOM ---
 
-export async function fetchRawMarkdown(
-  filePath: string,
-  payload: GitHubPayload
-): Promise<string> {
-  const cached = rawCache.get(filePath);
+/**
+ * Scrape raw markdown content from the source diff table.
+ * Reads td[data-line-number] cells on the right/head side (additions + context).
+ * Returns null if the table isn't in the DOM (rich diff is active).
+ */
+export function scrapeRawFromSourceDiff(
+  container: HTMLElement,
+  filePath: string
+): string | null {
+  const cached = scrapedCache.get(filePath);
   if (cached !== undefined) return cached;
 
-  const urls = buildRawUrls(filePath, payload);
+  const table = container.querySelector<HTMLElement>('table');
+  if (!table) return null;
 
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { credentials: 'same-origin' });
-      if (resp.ok) {
-        const text = await resp.text();
-        rawCache.set(filePath, text);
-        return text;
+  const lines: Array<{ num: number; text: string }> = [];
+  const rows = table.querySelectorAll<HTMLTableRowElement>('tr');
+
+  for (const row of rows) {
+    const numCells = row.querySelectorAll<HTMLTableCellElement>('td[data-line-number]');
+    for (const numCell of numCells) {
+      // Only right-side (head) lines: additions and context
+      if (
+        !numCell.classList.contains('blob-num-addition') &&
+        !numCell.classList.contains('blob-num-context')
+      ) {
+        continue;
       }
-    } catch {
-      // Try next URL
+
+      const lineNum = parseInt(numCell.getAttribute('data-line-number') ?? '', 10);
+      if (isNaN(lineNum)) continue;
+
+      // The code cell is the next sibling td, or a td with blob-code class in same row
+      const codeCell =
+        numCell.nextElementSibling ??
+        row.querySelector<HTMLElement>('.blob-code-addition, .blob-code-context');
+      if (!codeCell) continue;
+
+      // GitHub prepends a non-printing space for diff markers — strip it
+      const raw = (codeCell.textContent ?? '').replace(/^\u00a0/, '').replace(/^ /, '');
+      lines.push({ num: lineNum, text: raw });
+      break; // only one right-side cell per row
     }
   }
 
-  rawCache.set(filePath, '');
-  return '';
+  if (lines.length === 0) return null;
+
+  lines.sort((a, b) => a.num - b.num);
+
+  // Build result array, filling gaps (collapsed hunks) with empty strings
+  const maxLine = lines[lines.length - 1].num;
+  const result = new Array<string>(maxLine).fill('');
+  for (const { num, text } of lines) {
+    result[num - 1] = text;
+  }
+
+  const content = result.join('\n');
+  scrapedCache.set(filePath, content);
+  return content;
 }
 
-function buildRawUrls(filePath: string, payload: GitHubPayload): string[] {
-  const urls: string[] = [];
-
-  // From embedded payload's diff entries
-  const entry = payload.diffEntries.find((e) => e.path === filePath);
-  if (entry?.rawBlobUrl) {
-    urls.push(entry.rawBlobUrl);
+export function clearScrapedCache(filePath?: string): void {
+  if (filePath) {
+    scrapedCache.delete(filePath);
+  } else {
+    scrapedCache.clear();
   }
-
-  // Construct from known data
-  if (payload.headCommitOid) {
-    urls.push(
-      `https://github.com/${payload.owner}/${payload.repo}/raw/${payload.headCommitOid}/${filePath}`
-    );
-  }
-
-  // From head branch name (needed for newly added files)
-  if (payload.headBranch) {
-    urls.push(
-      `https://github.com/${payload.owner}/${payload.repo}/raw/${payload.headBranch}/${filePath}`
-    );
-  }
-
-  // Fallback: blob URL pattern
-  urls.push(
-    `https://github.com/${payload.owner}/${payload.repo}/raw/HEAD/${filePath}`
-  );
-
-  return urls;
 }
 
 // --- Building the line map ---
@@ -254,6 +266,6 @@ export function buildElementLineMap(
 }
 
 export function clearCaches(): void {
-  rawCache.clear();
+  scrapedCache.clear();
   lineMapCache.clear();
 }

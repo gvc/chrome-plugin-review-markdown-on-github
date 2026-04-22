@@ -3,7 +3,6 @@ import { GitHubPayload, LineMatch } from '../shared/types';
 export type OnSubmitComment = (
   body: string,
   match: LineMatch,
-  payload: GitHubPayload
 ) => Promise<boolean>;
 
 let activeForm: HTMLElement | null = null;
@@ -11,7 +10,7 @@ let activeForm: HTMLElement | null = null;
 export function showCommentForm(
   anchorElement: HTMLElement,
   match: LineMatch,
-  payload: GitHubPayload,
+  _payload: GitHubPayload,
   onSubmit: OnSubmitComment
 ): void {
   // Close any existing form
@@ -32,9 +31,9 @@ export function showCommentForm(
     <div class="mdr-cf-context">${escapeHtml(truncated)}</div>
     <textarea class="mdr-cf-textarea" placeholder="Write your comment..." rows="3"></textarea>
     <div class="mdr-cf-actions">
-      <span class="mdr-cf-hint">Ctrl+Enter to submit</span>
+      <span class="mdr-cf-hint">Opens GitHub's comment form on this line</span>
       <button class="mdr-cf-cancel">Cancel</button>
-      <button class="mdr-cf-submit">Save Draft</button>
+      <button class="mdr-cf-submit">Comment on Line ${match.lineNumber}</button>
     </div>
     <div class="mdr-cf-error" style="display:none"></div>
   `;
@@ -72,26 +71,23 @@ export function showCommentForm(
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving...';
+    submitBtn.textContent = 'Opening...';
     errorDiv.style.display = 'none';
 
     try {
-      const success = await onSubmit(body, match, payload);
+      const success = await onSubmit(body, match);
       if (success) {
         dismissCommentForm();
-        showToast('Draft saved');
-        // Add visual indicator to anchor
-        anchorElement.classList.add('mdr-has-comment');
       } else {
-        showError(errorDiv, 'Failed to post comment. Try again.');
+        showError(errorDiv, 'Could not open GitHub comment form. Try again.');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Save Draft';
+        submitBtn.textContent = `Comment on Line ${match.lineNumber}`;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       showError(errorDiv, msg);
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Save Draft';
+      submitBtn.textContent = `Comment on Line ${match.lineNumber}`;
     }
   }
 }
