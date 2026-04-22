@@ -36,4 +36,18 @@ describe('parsePRUrl', () => {
     const result = parsePRUrl('/user/123/pull/456/files');
     expect(result).toEqual({ owner: 'user', repo: '123', prNumber: 456 });
   });
+
+  it('parses PR changes URL (GitHub redirect from /files)', () => {
+    const result = parsePRUrl('/octocat/hello-world/pull/102/changes');
+    expect(result).toEqual({
+      owner: 'octocat',
+      repo: 'hello-world',
+      prNumber: 102,
+    });
+  });
+
+  it('parses PR changes URL with query params', () => {
+    const result = parsePRUrl('/org/repo/pull/99/changes?diff=split');
+    expect(result).toEqual({ owner: 'org', repo: 'repo', prNumber: 99 });
+  });
 });

@@ -4,7 +4,7 @@ export interface PRUrl {
   prNumber: number;
 }
 
-const PR_FILES_RE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/files/;
+const PR_FILES_RE = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/(files|changes)/;
 
 export function parsePRUrl(pathname: string = window.location.pathname): PRUrl | null {
   const match = pathname.match(PR_FILES_RE);
