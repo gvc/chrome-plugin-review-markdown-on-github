@@ -1,0 +1,23 @@
+{
+  "name": "markdown-review-github-pr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "webpack --watch --mode=development",
+    "build": "webpack --mode=production",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "mini-css-extract-plugin": "^2.9.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "webpack": "^5.93.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

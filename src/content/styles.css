@@ -1,0 +1,326 @@
+/* === Hover button === */
+.mdr-hover-btn {
+  position: absolute;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2da44e;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background 0.15s, color 0.15s;
+}
+
+.mdr-hover-btn:hover {
+  background: #2da44e;
+  color: #ffffff;
+}
+
+/* === Comment form === */
+.mdr-comment-form {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: #24292f;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+}
+
+.mdr-cf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mdr-cf-title {
+  font-size: 12px;
+  color: #57606a;
+}
+
+.mdr-cf-context {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid #d0d7de;
+  background: #f6f8fa;
+  font-size: 12px;
+  color: #57606a;
+  border-radius: 0 4px 4px 0;
+  white-space: pre-wrap;
+  max-height: 60px;
+  overflow: hidden;
+}
+
+.mdr-cf-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.mdr-cf-textarea:focus {
+  outline: none;
+  border-color: #0969da;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+
+.mdr-cf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mdr-cf-hint {
+  flex: 1;
+  font-size: 11px;
+  color: #6e7781;
+}
+
+.mdr-cf-cancel {
+  padding: 4px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #24292f;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.mdr-cf-cancel:hover {
+  background: #eaeef2;
+}
+
+.mdr-cf-submit {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2da44e;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mdr-cf-submit:hover {
+  background: #218838;
+}
+
+.mdr-cf-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mdr-cf-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #ffebe9;
+  color: #82071e;
+  font-size: 12px;
+}
+
+/* === Confidence badges === */
+.mdr-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.mdr-badge-exact {
+  background: #dafbe1;
+  color: #116329;
+}
+
+.mdr-badge-good {
+  background: #ddf4ff;
+  color: #0969da;
+}
+
+.mdr-badge-low {
+  background: #fff8c5;
+  color: #9a6700;
+}
+
+/* === Comment badges (inline on elements) === */
+.mdr-comment-badge {
+  position: absolute;
+  top: 0;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #ddf4ff;
+  color: #0969da;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  z-index: 5;
+  transition: background 0.15s;
+}
+
+.mdr-comment-badge:hover {
+  background: #b6e3ff;
+}
+
+/* === Comment thread === */
+.mdr-comment-thread {
+  margin: 8px 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.mdr-comment-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.mdr-comment-item:last-child {
+  border-bottom: none;
+}
+
+.mdr-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.mdr-avatar {
+  border-radius: 50%;
+}
+
+.mdr-comment-time {
+  color: #6e7781;
+  font-size: 11px;
+}
+
+.mdr-comment-body {
+  color: #24292f;
+  white-space: pre-wrap;
+}
+
+/* === Has-comment indicator === */
+.mdr-has-comment {
+  border-left: 3px solid #2da44e;
+  padding-left: 8px;
+}
+
+/* === Toast === */
+.mdr-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: #24292f;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  z-index: 99999;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.mdr-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* === Dark mode support === */
+@media (prefers-color-scheme: dark) {
+  .mdr-hover-btn {
+    background: #21262d;
+    border-color: #30363d;
+    color: #3fb950;
+  }
+
+  .mdr-hover-btn:hover {
+    background: #238636;
+    color: #ffffff;
+  }
+
+  .mdr-comment-form {
+    background: #161b22;
+    border-color: #30363d;
+    color: #c9d1d9;
+  }
+
+  .mdr-cf-context {
+    background: #0d1117;
+    border-left-color: #30363d;
+    color: #8b949e;
+  }
+
+  .mdr-cf-textarea {
+    background: #0d1117;
+    border-color: #30363d;
+    color: #c9d1d9;
+  }
+
+  .mdr-cf-textarea:focus {
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+  }
+
+  .mdr-cf-cancel {
+    background: #21262d;
+    border-color: #30363d;
+    color: #c9d1d9;
+  }
+
+  .mdr-cf-error {
+    background: #490202;
+    color: #f85149;
+  }
+
+  .mdr-comment-thread {
+    background: #161b22;
+    border-color: #30363d;
+  }
+
+  .mdr-comment-item {
+    border-bottom-color: #21262d;
+  }
+
+  .mdr-comment-body {
+    color: #c9d1d9;
+  }
+
+  .mdr-comment-badge {
+    background: #1f3a5f;
+    color: #58a6ff;
+  }
+
+  .mdr-comment-badge:hover {
+    background: #264f78;
+  }
+
+  .mdr-toast {
+    background: #c9d1d9;
+    color: #0d1117;
+  }
+}
