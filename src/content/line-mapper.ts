@@ -24,30 +24,37 @@ export function scrapeRawFromSourceDiff(
   const rows = table.querySelectorAll<HTMLTableRowElement>('tr');
 
   for (const row of rows) {
-    const numCells = row.querySelectorAll<HTMLTableCellElement>('td[data-line-number]');
-    for (const numCell of numCells) {
-      // Only right-side (head) lines: additions and context
-      if (
-        !numCell.classList.contains('blob-num-addition') &&
-        !numCell.classList.contains('blob-num-context')
-      ) {
-        continue;
+    // New GitHub DOM (2024+): td.new-diff-line-number (number) + td.right-side-diff-cell (code)
+    // Old GitHub DOM: td.blob-num-addition / td.blob-num-context (number) + td.blob-code-* (code)
+    let lineNum: number | null = null;
+    let codeCell: HTMLElement | null = null;
+
+    // num cell: has new-diff-line-number class but NOT right-side-diff-cell
+    const newNumCell = row.querySelector<HTMLTableCellElement>(
+      'td.new-diff-line-number[data-line-number]:not(.right-side-diff-cell)'
+    );
+    if (newNumCell) {
+      lineNum = parseInt(newNumCell.getAttribute('data-line-number') ?? '', 10);
+      codeCell = row.querySelector<HTMLElement>('td.right-side-diff-cell');
+    } else {
+      const oldNumCell = row.querySelector<HTMLTableCellElement>(
+        'td.blob-num-addition[data-line-number], td.blob-num-context[data-line-number]'
+      );
+      if (oldNumCell) {
+        lineNum = parseInt(oldNumCell.getAttribute('data-line-number') ?? '', 10);
+        codeCell = row.querySelector<HTMLElement>('.blob-code-addition, .blob-code-context');
       }
-
-      const lineNum = parseInt(numCell.getAttribute('data-line-number') ?? '', 10);
-      if (isNaN(lineNum)) continue;
-
-      // The code cell is the next sibling td, or a td with blob-code class in same row
-      const codeCell =
-        numCell.nextElementSibling ??
-        row.querySelector<HTMLElement>('.blob-code-addition, .blob-code-context');
-      if (!codeCell) continue;
-
-      // GitHub prepends a non-printing space for diff markers — strip it
-      const raw = (codeCell.textContent ?? '').replace(/^\u00a0/, '').replace(/^ /, '');
-      lines.push({ num: lineNum, text: raw });
-      break; // only one right-side cell per row
     }
+
+    if (!lineNum || isNaN(lineNum) || !codeCell) continue;
+
+    // New DOM: text is in .diff-text-inner (excludes the +/- marker span)
+    // Old DOM: textContent of the cell minus leading non-breaking space
+    const inner = codeCell.querySelector<HTMLElement>('.diff-text-inner');
+    const raw = inner
+      ? (inner.textContent ?? '')
+      : (codeCell.textContent ?? '').replace(/^\u00a0/, '').replace(/^ /, '');
+    lines.push({ num: lineNum, text: raw });
   }
 
   if (lines.length === 0) return null;

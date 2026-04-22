@@ -107,7 +107,7 @@ export function observeRichDiffToggle(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['class', 'hidden', 'style'],
+    attributeFilter: ['class', 'hidden', 'style', 'aria-hidden'],
   });
 
   return observer;

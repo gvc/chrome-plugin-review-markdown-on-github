@@ -1,29 +1,18 @@
-import { switchToSourceDiff } from './rich-diff-detector';
-
 export interface TriggerResult {
   success: boolean;
   error?: string;
 }
 
 /**
- * Switch to source diff, find the target line, open GitHub's native comment form,
- * and pre-fill the textarea with the provided text.
+ * Find the target line row in the source diff table and open GitHub's native
+ * comment form, pre-filling the textarea with the provided text.
+ * Assumes source diff is already active.
  */
 export async function triggerNativeCommentOnLine(
   container: HTMLElement,
   lineNumber: number,
   prefillText?: string
 ): Promise<TriggerResult> {
-  // Step 1: Switch to source diff view
-  const switched = await switchToSourceDiff(container);
-  if (!switched) {
-    return {
-      success: false,
-      error: 'Could not switch to source diff view. Try clicking the "Source" button manually.',
-    };
-  }
-
-  // Step 2: Find the target line row
   const table = container.querySelector<HTMLElement>('table');
   if (!table) {
     return { success: false, error: 'Source diff table not found.' };
@@ -37,13 +26,9 @@ export async function triggerNativeCommentOnLine(
     };
   }
 
-  // Step 3: Scroll to the row
   targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-  // Small delay to let scroll settle
   await delay(150);
 
-  // Step 4: Trigger GitHub's native add-comment button
   const opened = await triggerAddCommentButton(targetRow);
   if (!opened) {
     return {
@@ -52,7 +37,6 @@ export async function triggerNativeCommentOnLine(
     };
   }
 
-  // Step 5: Pre-fill textarea if text provided
   if (prefillText) {
     const textarea = await waitForCommentTextarea(targetRow, 2000);
     if (textarea) {
@@ -67,24 +51,23 @@ export async function triggerNativeCommentOnLine(
 // --- Internal helpers ---
 
 function findDiffRow(table: HTMLElement, lineNumber: number): HTMLTableRowElement | null {
-  // Prefer right-side (addition or context) — same logic as old source-diff-renderer
-  const cells = table.querySelectorAll<HTMLTableCellElement>(
+  // New GitHub DOM (2024+): td.new-diff-line-number
+  const newCell = table.querySelector<HTMLTableCellElement>(
+    `td.new-diff-line-number[data-line-number="${lineNumber}"]`
+  );
+  if (newCell) return newCell.closest('tr');
+
+  // Old GitHub DOM fallback
+  const oldCell = table.querySelector<HTMLTableCellElement>(
+    `td.blob-num-addition[data-line-number="${lineNumber}"], td.blob-num-context[data-line-number="${lineNumber}"]`
+  );
+  if (oldCell) return oldCell.closest('tr');
+
+  // Last resort: any td with this line number
+  const anyCell = table.querySelector<HTMLTableCellElement>(
     `td[data-line-number="${lineNumber}"]`
   );
-
-  for (const cell of cells) {
-    if (
-      cell.classList.contains('blob-num-addition') ||
-      cell.classList.contains('blob-num-context')
-    ) {
-      return cell.closest('tr');
-    }
-  }
-
-  // Fall back to any cell with that line number
-  if (cells.length > 0) {
-    return cells[cells.length - 1].closest('tr');
-  }
+  if (anyCell) return anyCell.closest('tr');
 
   return null;
 }
@@ -101,7 +84,6 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
   row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
   row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
 
-  // Also hover the line number cells
   for (const cell of row.querySelectorAll<HTMLElement>('td[data-line-number]')) {
     cell.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -109,7 +91,6 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
 
   await delay(100);
 
-  // Look for button that appeared after hover
   const hoverBtn = row.querySelector<HTMLElement>(
     'button[aria-label*="comment"], button[data-line], button[data-testid*="comment"]'
   );
@@ -118,12 +99,11 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
     return true;
   }
 
-  // Strategy 3: Click the line number cell directly (GitHub sometimes handles this)
-  const numCell = row.querySelector<HTMLElement>('td[data-line-number]');
+  // Strategy 3: Click the line number cell directly
+  const numCell = row.querySelector<HTMLElement>('td.new-diff-line-number, td[data-line-number]');
   if (numCell) {
     numCell.click();
     await delay(200);
-    // Check if a comment form appeared below this row
     const nextRow = row.nextElementSibling;
     if (nextRow?.querySelector('textarea, .comment-form-textarea')) {
       return true;
@@ -138,16 +118,13 @@ function waitForCommentTextarea(
   timeoutMs: number
 ): Promise<HTMLTextAreaElement | null> {
   return new Promise((resolve) => {
-    // Check immediately
     const check = (): HTMLTextAreaElement | null => {
-      // GitHub injects the comment form as a sibling row below the target row
       let sibling: Element | null = row.nextElementSibling;
       while (sibling) {
         const ta = sibling.querySelector<HTMLTextAreaElement>(
           'textarea.comment-form-textarea, textarea[name="comment[body]"], textarea[placeholder*="comment"], textarea[aria-label*="comment"]'
         );
         if (ta) return ta;
-        // Stop searching after a few rows
         if (sibling.querySelector('td[data-line-number]')) break;
         sibling = sibling.nextElementSibling;
       }
@@ -169,7 +146,6 @@ function waitForCommentTextarea(
       }
     });
 
-    // Observe from the parent table for new rows
     const table = row.closest('table') ?? row.parentElement;
     if (table) {
       observer.observe(table, { childList: true, subtree: true });
@@ -182,10 +158,6 @@ function waitForCommentTextarea(
   });
 }
 
-/**
- * Fill a textarea in a way that React's synthetic event system recognises.
- * Simply setting .value = text doesn't fire React's onChange.
- */
 function fillTextareaReact(textarea: HTMLTextAreaElement, text: string): void {
   const nativeSetter = Object.getOwnPropertyDescriptor(
     HTMLTextAreaElement.prototype,
