@@ -22,6 +22,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true });
       });
       return true;
+
+    case MSG.SUBMIT_DRAFTS:
+      handleSubmitDrafts(message.payload).then(sendResponse);
+      return true;
   }
 });
 
@@ -40,6 +44,36 @@ async function handleCreateComment(payload: {
     return { success: false, error: 'No GitHub token configured' };
   }
   return createCommentViaApi(pat, payload);
+}
+
+async function handleSubmitDrafts(payload: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  drafts: Array<{ body: string; path: string; line: number; commitId: string }>;
+}): Promise<{ results: Array<{ success: boolean; error?: string }> }> {
+  const { pat } = await chrome.storage.sync.get('pat');
+  if (!pat) {
+    return {
+      results: payload.drafts.map(() => ({ success: false, error: 'No GitHub token configured' })),
+    };
+  }
+
+  const results: Array<{ success: boolean; error?: string }> = [];
+  for (const draft of payload.drafts) {
+    const result = await createCommentViaApi(pat, {
+      owner: payload.owner,
+      repo: payload.repo,
+      prNumber: payload.prNumber,
+      body: draft.body,
+      path: draft.path,
+      line: draft.line,
+      commitId: draft.commitId,
+      side: 'RIGHT',
+    });
+    results.push(result);
+  }
+  return { results };
 }
 
 async function handleFetchComments(payload: {

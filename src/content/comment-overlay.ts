@@ -1,4 +1,4 @@
-import { GitHubPayload, PRComment } from '../shared/types';
+import { DraftComment, GitHubPayload, PRComment } from '../shared/types';
 
 /**
  * Fetch existing PR review comments.
@@ -131,6 +131,77 @@ export function renderCommentBadges(
     el.style.position = 'relative';
     el.appendChild(badge);
   }
+}
+
+/**
+ * Render draft comment badges on the rendered markdown.
+ * Uses amber/yellow styling to distinguish from posted comments (blue).
+ */
+export function renderDraftBadges(
+  drafts: DraftComment[],
+  filePath: string,
+  lineToElement: Map<number, HTMLElement>
+): void {
+  const fileDrafts = drafts.filter((d) => d.filePath === filePath && d.lineNumber != null);
+  const byLine = new Map<number, DraftComment[]>();
+
+  for (const d of fileDrafts) {
+    const existing = byLine.get(d.lineNumber) ?? [];
+    existing.push(d);
+    byLine.set(d.lineNumber, existing);
+  }
+
+  for (const [line, lineDrafts] of byLine) {
+    const el = lineToElement.get(line);
+    if (!el) continue;
+
+    // Don't duplicate badges
+    if (el.querySelector('.mdr-draft-badge')) continue;
+
+    const badge = document.createElement('span');
+    badge.className = 'mdr-draft-badge';
+    badge.textContent = `📝 ${lineDrafts.length}`;
+    badge.title = `${lineDrafts.length} draft(s) on line ${line}`;
+
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDraftThread(el, lineDrafts);
+    });
+
+    el.style.position = 'relative';
+    el.appendChild(badge);
+  }
+}
+
+function toggleDraftThread(anchor: HTMLElement, drafts: DraftComment[]): void {
+  const existing = anchor.nextElementSibling;
+  if (existing?.classList.contains('mdr-draft-thread')) {
+    existing.remove();
+    return;
+  }
+
+  const thread = document.createElement('div');
+  thread.className = 'mdr-draft-thread';
+
+  const sorted = [...drafts].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  for (const d of sorted) {
+    const item = document.createElement('div');
+    item.className = 'mdr-comment-item';
+    const ago = timeAgo(d.createdAt);
+    item.innerHTML = `
+      <div class="mdr-comment-meta">
+        <strong>Draft</strong>
+        <span class="mdr-comment-time">${ago}</span>
+      </div>
+      <div class="mdr-comment-body">${escapeHtml(d.body)}</div>
+    `;
+    thread.appendChild(item);
+  }
+
+  anchor.insertAdjacentElement('afterend', thread);
 }
 
 function toggleCommentThread(anchor: HTMLElement, comments: PRComment[]): void {
