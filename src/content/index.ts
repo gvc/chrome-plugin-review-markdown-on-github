@@ -25,6 +25,13 @@ import { scrapeExistingComments, clearExistingCommentCache } from './existing-co
 import { renderExistingComments, clearRenderedComments } from './existing-comment-renderer';
 import { parsePRUrl, makePrKey } from '../shared/url-parser';
 import { purgeStale } from './comment-store';
+import {
+  createMdrButton,
+  removeMdrButton,
+  updateMdrButtonBadge,
+  openPanel,
+  closePanel,
+} from './comment-panel';
 
 async function initialize(): Promise<void> {
   const { enabled } = await chrome.storage.sync.get('enabled');
@@ -48,9 +55,17 @@ async function initialize(): Promise<void> {
     const restored = await restoreQueue(prKey);
     if (restored > 0) {
       showToast(`${restored} queued comment(s) restored — switch to Source diff to post`);
+      refreshMdrButton();
     }
     await purgeStale(7 * 24 * 60 * 60 * 1000);
   }
+
+  // Create MDR floating button (panel opener) — visible whenever rich diff is active
+  createMdrButton(
+    () => openMdrPanel(),
+    () => { /* panel closed by user */ }
+  );
+  refreshMdrButton();
 
   const containers = findMarkdownFileContainers();
   console.debug(`[MDR] Found ${containers.length} markdown file(s)`);
@@ -249,6 +264,7 @@ async function processFile(
         match,
         async (body, m) => {
           await updateComment(filePath, existing.id, body);
+          refreshMdrButton();
           showToast('Comment updated');
           return true;
         },
@@ -256,6 +272,7 @@ async function processFile(
         async (commentId) => {
           await dequeueComment(filePath, commentId);
           element.classList.remove('mdr-commented');
+          refreshMdrButton();
           showToast('Comment removed');
         }
       );
@@ -287,6 +304,7 @@ async function openNativeComment(
 ): Promise<boolean> {
   await enqueueComment(filePath, match.lineNumber, body);
   const count = getQueuedCount();
+  refreshMdrButton();
   showToast(`${count} comment(s) queued — switch to Source diff to post`);
   return true;
 }
@@ -301,6 +319,7 @@ async function flushQueue(container: HTMLElement, filePath: string): Promise<voi
     const result = await triggerNativeCommentOnLine(container, comment.lineNumber, comment.body);
     if (result.success) {
       await dequeueComment(filePath, comment.id);
+      refreshMdrButton();
     } else {
       console.warn(`[MDR] Could not trigger comment on line ${comment.lineNumber}:`, result.error);
       showToast(`Could not open comment form for line ${comment.lineNumber}.\n${result.error ?? ''}`);
@@ -319,6 +338,28 @@ async function flushQueue(container: HTMLElement, filePath: string): Promise<voi
       console.warn(`[MDR]   Line ${c.lineNumber}: ${c.body}`);
     }
   }
+}
+
+// --- MDR panel helpers ---
+
+function openMdrPanel(): void {
+  const allQueued = getAllQueued();
+  openPanel(allQueued, {
+    onUpdate: async (id, filePath, newBody) => {
+      await updateComment(filePath, id, newBody);
+      refreshMdrButton();
+    },
+    onDelete: async (id, filePath) => {
+      await dequeueComment(filePath, id);
+      refreshMdrButton();
+      showToast('Comment removed');
+    },
+  });
+}
+
+function refreshMdrButton(): void {
+  const count = getQueuedCount();
+  updateMdrButtonBadge(count);
 }
 
 function showToast(message: string): void {
@@ -367,6 +408,8 @@ function reinitialize(): void {
     clearPayloadCache();
     clearLineMapCaches();
     clearExistingCommentCache();
+    closePanel();
+    removeMdrButton();
     // DO NOT clear queue — persisted comments must survive navigation
     initialize();
   }, 300);
