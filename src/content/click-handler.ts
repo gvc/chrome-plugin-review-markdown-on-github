@@ -68,9 +68,15 @@ function showButton(target: HTMLElement): void {
     btn.title = 'Add review comment';
   }
 
+  const isTableCell = target.tagName === 'TD' || target.tagName === 'TH';
   btn.style.display = 'flex';
   btn.style.top = `${window.scrollY + rect.top + rect.height / 2 - 12}px`;
-  btn.style.left = `${window.scrollX + rect.left - 32}px`;
+  if (isTableCell) {
+    // Place button inside the cell at its left edge so there's no gap to cross
+    btn.style.left = `${window.scrollX + rect.left + 4}px`;
+  } else {
+    btn.style.left = `${window.scrollX + rect.left - 32}px`;
+  }
   btn.dataset.targetElement = target.dataset.mdrId ?? '';
 }
 
@@ -82,7 +88,7 @@ function hideButton(): void {
 
 function scheduleHide(): void {
   if (hideTimeout) clearTimeout(hideTimeout);
-  hideTimeout = setTimeout(hideButton, 200);
+  hideTimeout = setTimeout(hideButton, 400);
 }
 
 let idCounter = 0;
