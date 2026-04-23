@@ -28,6 +28,14 @@ export function findMarkdownFileContainers(): FileContainer[] {
   // when it contains exactly one diffEntry (i.e. it's a per-file wrapper).
   // Otherwise keep el itself and rely on sibling-aware helpers below.
   const allDiffEntries = document.querySelectorAll<HTMLElement>('[class*="diffEntry"]');
+
+  // Pre-count entries per parent to avoid O(n²) querySelectorAll inside the loop.
+  const entriesPerParent = new Map<HTMLElement, number>();
+  for (const el of allDiffEntries) {
+    const parent = el.parentElement;
+    if (parent) entriesPerParent.set(parent, (entriesPerParent.get(parent) ?? 0) + 1);
+  }
+
   for (const el of allDiffEntries) {
     const filePath = extractFilePathFromContainer(el);
     if (!filePath) continue;
@@ -35,16 +43,30 @@ export function findMarkdownFileContainers(): FileContainer[] {
     if (!MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) continue;
 
     const parent = el.parentElement;
-    const parentHasSingleEntry =
-      parent !== null &&
-      parent.querySelectorAll('[class*="diffEntry"]').length === 1;
-
     // Safe to use parent only when it wraps exactly this one file.
-    const container = parentHasSingleEntry ? parent! : el;
+    const container = (parent && entriesPerParent.get(parent) === 1) ? parent : el;
     results.push({ container, filePath });
   }
 
   return results;
+}
+
+/**
+ * Walk forward siblings of `el` until either `predicate` returns a match or a
+ * diffEntry boundary is hit.  Returns the matched sibling or null.
+ */
+export function findSibling(
+  el: HTMLElement,
+  predicate: (sibling: HTMLElement) => HTMLElement | null
+): HTMLElement | null {
+  let sibling = el.nextElementSibling as HTMLElement | null;
+  while (sibling) {
+    if (sibling.className?.includes?.('diffEntry')) break;
+    const found = predicate(sibling);
+    if (found) return found;
+    sibling = sibling.nextElementSibling as HTMLElement | null;
+  }
+  return null;
 }
 
 /**
@@ -107,23 +129,14 @@ export function isRichDiffActive(container: HTMLElement): boolean {
 export function getMarkdownArticle(container: HTMLElement): HTMLElement | null {
   const SELECTOR =
     'article.markdown-body, .js-file-content article, .js-file-content .markdown-body, .prose-diff article.markdown-body';
+  const selectorList = SELECTOR.split(',').join(', ');
 
-  // Primary: descendant search
-  const article = container.querySelector<HTMLElement>(SELECTOR);
-  if (article) return article;
-
-  // Sibling search: walk forward siblings until the next diffEntry
-  let sibling = container.nextElementSibling as HTMLElement | null;
-  while (sibling) {
-    if (sibling.className?.includes?.('diffEntry')) break;
-    const found = sibling.matches(SELECTOR.split(',').join(', '))
-      ? sibling
-      : sibling.querySelector<HTMLElement>(SELECTOR);
-    if (found) return found;
-    sibling = sibling.nextElementSibling as HTMLElement | null;
-  }
-
-  return null;
+  return (
+    container.querySelector<HTMLElement>(SELECTOR) ??
+    findSibling(container, (s) =>
+      s.matches(selectorList) ? s : s.querySelector<HTMLElement>(SELECTOR)
+    )
+  );
 }
 
 /**
@@ -131,28 +144,19 @@ export function getMarkdownArticle(container: HTMLElement): HTMLElement | null {
  * Falls back to the container itself for legacy/wrapped layouts.
  */
 function findContentRoot(container: HTMLElement): HTMLElement {
-  // Descendant lookup first (legacy / single-file-wrapper layout)
   const desc =
     container.querySelector<HTMLElement>('.js-file-content') ??
     container.querySelector<HTMLElement>('.prose-diff');
   if (desc) return desc;
 
-  // Sibling lookup for diffEntry-header containers
-  let sibling = container.nextElementSibling as HTMLElement | null;
-  while (sibling) {
-    if (sibling.className?.includes?.('diffEntry')) break;
-    if (
-      sibling.querySelector('table') ||
-      sibling.querySelector('article.markdown-body') ||
-      sibling.classList?.contains('js-file-content') ||
-      sibling.classList?.contains('prose-diff')
-    ) {
-      return sibling;
-    }
-    sibling = sibling.nextElementSibling as HTMLElement | null;
-  }
-
-  return container;
+  return findSibling(container, (s) =>
+    s.querySelector('table') ||
+    s.querySelector('article.markdown-body') ||
+    s.classList?.contains('js-file-content') ||
+    s.classList?.contains('prose-diff')
+      ? s
+      : null
+  ) ?? container;
 }
 
 /**
@@ -259,14 +263,10 @@ export function switchToRichDiff(container: HTMLElement): Promise<boolean> {
 }
 
 function hasTable(container: HTMLElement): boolean {
-  if (container.querySelector('table')) return true;
-  let sibling = container.nextElementSibling as HTMLElement | null;
-  while (sibling) {
-    if (sibling.className?.includes?.('diffEntry')) break;
-    if (sibling.tagName === 'TABLE' || sibling.querySelector('table')) return true;
-    sibling = sibling.nextElementSibling as HTMLElement | null;
-  }
-  return false;
+  return !!(
+    container.querySelector('table') ??
+    findSibling(container, (s) => (s.tagName === 'TABLE' ? s : s.querySelector('table')))
+  );
 }
 
 function waitForSourceDiff(container: HTMLElement, timeoutMs: number): Promise<boolean> {

@@ -1,4 +1,5 @@
 import { LineMapEntry, LineMatch } from '../shared/types';
+import { findSibling } from './rich-diff-detector';
 
 const scrapedCache = new Map<string, string>();
 const lineMapCache = new Map<string, LineMapEntry[]>();
@@ -11,22 +12,10 @@ const lineMapCache = new Map<string, LineMapEntry[]>();
  * Returns null if the table isn't in the DOM (rich diff is active).
  */
 function findTableInContainer(container: HTMLElement): HTMLElement | null {
-  // Direct descendant first
-  const t = container.querySelector<HTMLElement>('table');
-  if (t) return t;
-
-  // Sibling search: container may be a diffEntry header; content lives in siblings
-  let sibling = container.nextElementSibling as HTMLElement | null;
-  while (sibling) {
-    if (sibling.className?.includes?.('diffEntry')) break;
-    const found = sibling.tagName === 'TABLE'
-      ? sibling
-      : sibling.querySelector<HTMLElement>('table');
-    if (found) return found;
-    sibling = sibling.nextElementSibling as HTMLElement | null;
-  }
-
-  return null;
+  return (
+    container.querySelector<HTMLElement>('table') ??
+    findSibling(container, (s) => (s.tagName === 'TABLE' ? s : s.querySelector('table')))
+  );
 }
 
 export function scrapeRawFromSourceDiff(

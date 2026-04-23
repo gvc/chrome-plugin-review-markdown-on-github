@@ -16,7 +16,7 @@ import {
   clearCaches as clearLineMapCaches,
 } from './line-mapper';
 import { attachClickHandlers, detachClickHandlers } from './click-handler';
-import { showCommentForm, type OnDeleteComment } from './comment-form';
+import { showCommentForm } from './comment-form';
 import { triggerNativeCommentOnLine } from './native-comment-trigger';
 import { enqueueComment, dequeueComment, getQueuedComments, getCommentForLine, updateComment, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
 import { parsePRUrl, makePrKey } from '../shared/url-parser';
@@ -82,7 +82,7 @@ async function initialize(): Promise<void> {
         if (processingFile) return;
         processingFile = true;
         try {
-          await processFile(container, filePath, payload);
+          await processFile(container, filePath);
         } finally {
           processingFile = false;
         }
@@ -115,8 +115,7 @@ async function initialize(): Promise<void> {
 
 async function processFile(
   container: HTMLElement,
-  filePath: string,
-  payload: GitHubPayload
+  filePath: string
 ): Promise<void> {
   const article = getMarkdownArticle(container);
   if (!article) return;
@@ -144,7 +143,6 @@ async function processFile(
       showCommentForm(
         element,
         match,
-        payload,
         async (body, m) => {
           await updateComment(filePath, existing.id, body);
           showToast('Comment updated');
@@ -158,7 +156,7 @@ async function processFile(
         }
       );
     } else {
-      showCommentForm(element, match, payload, async (body, m) => {
+      showCommentForm(element, match, async (body, m) => {
         const success = await openNativeComment(filePath, body, m);
         if (success) element.classList.add('mdr-commented');
         return success;

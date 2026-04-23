@@ -1,4 +1,4 @@
-import { GitHubPayload, LineMatch } from '../shared/types';
+import { LineMatch } from '../shared/types';
 
 export type OnSubmitComment = (
   body: string,
@@ -12,7 +12,6 @@ let activeForm: HTMLElement | null = null;
 export function showCommentForm(
   anchorElement: HTMLElement,
   match: LineMatch,
-  _payload: GitHubPayload,
   onSubmit: OnSubmitComment,
   existingComment?: { id: string; body: string } | null,
   onDelete?: OnDeleteComment
@@ -62,8 +61,8 @@ export function showCommentForm(
   const errorDiv = form.querySelector<HTMLElement>('.mdr-cf-error')!;
   const deleteBtn = form.querySelector<HTMLButtonElement>('.mdr-cf-delete');
 
-  if (isEdit && existingComment) {
-    textarea.value = existingComment.body;
+  if (isEdit) {
+    textarea.value = existingComment!.body;
   }
 
   textarea.focus();
@@ -131,19 +130,6 @@ function showError(el: HTMLElement, msg: string): void {
   el.style.display = 'block';
 }
 
-function showToast(message: string): void {
-  const toast = document.createElement('div');
-  toast.className = 'mdr-toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => toast.classList.add('mdr-toast-visible'));
-
-  setTimeout(() => {
-    toast.classList.remove('mdr-toast-visible');
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
-}
 
 function confidenceBadge(confidence: string): string {
   switch (confidence) {
