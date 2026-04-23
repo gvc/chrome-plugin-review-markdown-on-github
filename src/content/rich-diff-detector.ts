@@ -23,23 +23,25 @@ export function findMarkdownFileContainers(): FileContainer[] {
   if (results.length > 0) return results;
 
   // Strategy 2: New GitHub DOM — diff entries with hashed CSS module classes.
-  // The diffEntry element is typically just the file header; the diff table and
-  // rendered article live in sibling elements under the parent.  Use the parent
-  // as the container so scraping and article detection work correctly.
+  // The diffEntry element is just the file header; the diff table and rendered
+  // article live in sibling elements under the same parent.  Use the parent only
+  // when it contains exactly one diffEntry (i.e. it's a per-file wrapper).
+  // Otherwise keep el itself and rely on sibling-aware helpers below.
   const allDiffEntries = document.querySelectorAll<HTMLElement>('[class*="diffEntry"]');
   for (const el of allDiffEntries) {
     const filePath = extractFilePathFromContainer(el);
     if (!filePath) continue;
     const lower = filePath.toLowerCase();
-    if (MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-      // Prefer the parent if it contains a table or markdown article; fall back to el.
-      const parent = el.parentElement;
-      const container =
-        (parent && (parent.querySelector('table') || parent.querySelector('article.markdown-body')))
-          ? parent
-          : el;
-      results.push({ container, filePath });
-    }
+    if (!MD_EXTENSIONS.some((ext) => lower.endsWith(ext))) continue;
+
+    const parent = el.parentElement;
+    const parentHasSingleEntry =
+      parent !== null &&
+      parent.querySelectorAll('[class*="diffEntry"]').length === 1;
+
+    // Safe to use parent only when it wraps exactly this one file.
+    const container = parentHasSingleEntry ? parent! : el;
+    results.push({ container, filePath });
   }
 
   return results;
@@ -49,25 +51,38 @@ export function findMarkdownFileContainers(): FileContainer[] {
  * Extract file path from a diff entry container by looking at header links/text.
  */
 function extractFilePathFromContainer(container: HTMLElement): string | null {
-  // Look for a link or element with a title/text that looks like a file path
-  const candidates = container.querySelectorAll<HTMLElement>(
-    'a[title], a[href*="#diff"], [title], button[aria-label]'
-  );
-  for (const el of candidates) {
-    const text = (el.getAttribute('title') || el.textContent || '').trim()
-      // Strip invisible LRM/RLM unicode markers GitHub adds
+  // Prefer data attributes — unambiguous, no text parsing needed
+  const dataPath =
+    container.getAttribute('data-tagsearch-path') ??
+    container.getAttribute('data-path') ??
+    container.getAttribute('data-file-path');
+  if (dataPath) return dataPath;
+
+  // Look for a link whose href contains the diff anchor — the text is the file path
+  const diffLink = container.querySelector<HTMLAnchorElement>('a[href*="#diff-"]');
+  if (diffLink) {
+    const text = (diffLink.getAttribute('title') || diffLink.textContent || '')
+      .trim()
       .replace(/[\u200E\u200F\u200B]/g, '');
-    if (text && text.includes('.') && !text.includes(' ')) {
-      return text;
-    }
+    if (text && text.includes('.') && !text.includes(' ')) return text;
   }
 
-  // Fallback: find any element whose text looks like a file path
-  const allText = container.querySelectorAll<HTMLElement>('a, span');
-  for (const el of allText) {
-    const text = (el.textContent || '').trim().replace(/[\u200E\u200F\u200B]/g, '');
-    if (text && /^[\w./-]+\.\w+$/.test(text)) {
-      return text;
+  // Look for elements with a title that looks like a file path
+  const titledEls = container.querySelectorAll<HTMLElement>('[title]');
+  for (const el of titledEls) {
+    const text = el.getAttribute('title')!.trim().replace(/[\u200E\u200F\u200B]/g, '');
+    if (text && /^[\w./-]+\.\w+$/.test(text) && !text.includes(' ')) return text;
+  }
+
+  // Last resort: only look inside known file-header sub-elements, never in the diff body
+  const headerEl = container.querySelector<HTMLElement>(
+    '[class*="fileHeader"], [class*="file-header"], [class*="fileName"], [class*="file-name"]'
+  );
+  if (headerEl) {
+    const spans = headerEl.querySelectorAll<HTMLElement>('a, span');
+    for (const el of spans) {
+      const text = (el.textContent || '').trim().replace(/[\u200E\u200F\u200B]/g, '');
+      if (text && /^[\w./-]+\.\w+$/.test(text)) return text;
     }
   }
 
@@ -86,13 +101,58 @@ export function isRichDiffActive(container: HTMLElement): boolean {
 
 /**
  * Get the rendered markdown <article> element from a file container.
+ * When container is a diffEntry header (siblings hold the content), also
+ * searches forward siblings up to the next diffEntry.
  */
 export function getMarkdownArticle(container: HTMLElement): HTMLElement | null {
-  // Primary selector: article with markdown-body class
-  const article = container.querySelector<HTMLElement>(
-    'article.markdown-body, .js-file-content article, .js-file-content .markdown-body, .prose-diff article.markdown-body'
-  );
-  return article;
+  const SELECTOR =
+    'article.markdown-body, .js-file-content article, .js-file-content .markdown-body, .prose-diff article.markdown-body';
+
+  // Primary: descendant search
+  const article = container.querySelector<HTMLElement>(SELECTOR);
+  if (article) return article;
+
+  // Sibling search: walk forward siblings until the next diffEntry
+  let sibling = container.nextElementSibling as HTMLElement | null;
+  while (sibling) {
+    if (sibling.className?.includes?.('diffEntry')) break;
+    const found = sibling.matches(SELECTOR.split(',').join(', '))
+      ? sibling
+      : sibling.querySelector<HTMLElement>(SELECTOR);
+    if (found) return found;
+    sibling = sibling.nextElementSibling as HTMLElement | null;
+  }
+
+  return null;
+}
+
+/**
+ * Find the content sibling (table or article wrapper) for a diffEntry-style container.
+ * Falls back to the container itself for legacy/wrapped layouts.
+ */
+function findContentRoot(container: HTMLElement): HTMLElement {
+  // Descendant lookup first (legacy / single-file-wrapper layout)
+  const desc =
+    container.querySelector<HTMLElement>('.js-file-content') ??
+    container.querySelector<HTMLElement>('.prose-diff');
+  if (desc) return desc;
+
+  // Sibling lookup for diffEntry-header containers
+  let sibling = container.nextElementSibling as HTMLElement | null;
+  while (sibling) {
+    if (sibling.className?.includes?.('diffEntry')) break;
+    if (
+      sibling.querySelector('table') ||
+      sibling.querySelector('article.markdown-body') ||
+      sibling.classList?.contains('js-file-content') ||
+      sibling.classList?.contains('prose-diff')
+    ) {
+      return sibling;
+    }
+    sibling = sibling.nextElementSibling as HTMLElement | null;
+  }
+
+  return container;
 }
 
 /**
@@ -103,10 +163,7 @@ export function observeRichDiffToggle(
   container: HTMLElement,
   callback: (active: boolean) => void
 ): MutationObserver {
-  const contentDiv =
-    container.querySelector('.js-file-content') ??
-    container.querySelector('.prose-diff') ??
-    container;
+  const contentDiv = findContentRoot(container);
 
   const observer = new MutationObserver(() => {
     callback(isRichDiffActive(container));
@@ -201,21 +258,33 @@ export function switchToRichDiff(container: HTMLElement): Promise<boolean> {
   return waitForRichDiff(container, 3000);
 }
 
+function hasTable(container: HTMLElement): boolean {
+  if (container.querySelector('table')) return true;
+  let sibling = container.nextElementSibling as HTMLElement | null;
+  while (sibling) {
+    if (sibling.className?.includes?.('diffEntry')) break;
+    if (sibling.tagName === 'TABLE' || sibling.querySelector('table')) return true;
+    sibling = sibling.nextElementSibling as HTMLElement | null;
+  }
+  return false;
+}
+
 function waitForSourceDiff(container: HTMLElement, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
-    if (container.querySelector('table')) {
+    if (hasTable(container)) {
       resolve(true);
       return;
     }
 
+    const observeTarget = findContentRoot(container);
     const observer = new MutationObserver(() => {
-      if (container.querySelector('table')) {
+      if (hasTable(container)) {
         observer.disconnect();
         clearTimeout(timer);
         resolve(true);
       }
     });
-    observer.observe(container, { childList: true, subtree: true });
+    observer.observe(observeTarget, { childList: true, subtree: true });
 
     const timer = setTimeout(() => {
       observer.disconnect();
@@ -238,7 +307,8 @@ function waitForRichDiff(container: HTMLElement, timeoutMs: number): Promise<boo
         resolve(true);
       }
     });
-    observer.observe(container, { childList: true, subtree: true, attributes: true });
+    const observeTarget = findContentRoot(container);
+    observer.observe(observeTarget, { childList: true, subtree: true, attributes: true });
 
     const timer = setTimeout(() => {
       observer.disconnect();
