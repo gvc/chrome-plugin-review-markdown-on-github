@@ -1,17 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Markdown Review for GitHub PRs",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Comment on rendered markdown in GitHub PR rich diff view",
-  "permissions": [
-    "storage"
-  ],
-  "host_permissions": [
-    "https://github.com/*"
-  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://github.com/*"],
   "content_scripts": [
     {
-      "matches": ["https://github.com/*/*/pull/*/files*", "https://github.com/*/*/pull/*/changes*"],
+      "matches": [
+        "https://github.com/*/*/pull/*/files*",
+        "https://github.com/*/*/pull/*/changes*"
+      ],
       "js": ["content/index.js"],
       "css": ["content/styles.css"],
       "run_at": "document_idle"

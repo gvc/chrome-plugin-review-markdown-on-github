@@ -59,6 +59,12 @@ async function initialize(): Promise<void> {
       // Source diff is active — scrape raw markdown now while table is in DOM.
       const scraped = scrapeRawFromSourceDiff(container, filePath);
       console.debug(`[MDR] Init scrape for ${filePath}: ${scraped ? scraped.split('\n').length + ' lines' : 'null (will retry on toggle)'}`);
+
+      // If scrape failed, the table is probably lazy-loaded (file below the fold).
+      // Watch for it to appear so we have raw markdown ready before first toggle.
+      if (!scraped) {
+        observeTableInsertion(container, filePath);
+      }
     }
 
     // Watch for future rich/source diff toggles
@@ -112,6 +118,29 @@ async function initialize(): Promise<void> {
   }
 }
 
+
+/**
+ * Watch for a lazy-loaded diff table to appear in the container.
+ * Once found, scrape it immediately so raw markdown is ready for the first
+ * rich-diff toggle. Disconnects after a successful scrape or after 30s.
+ */
+function observeTableInsertion(container: HTMLElement, filePath: string): void {
+  const observer = new MutationObserver(() => {
+    const scraped = scrapeRawFromSourceDiff(container, filePath);
+    if (scraped) {
+      console.debug(`[MDR] Lazy-loaded table scraped for ${filePath}: ${scraped.split('\n').length} lines`);
+      observer.disconnect();
+    }
+  });
+
+  // Table may appear as a child of container OR as a sibling (new GitHub DOM).
+  // Observe the parent to catch both cases.
+  const target = container.parentElement ?? container;
+  observer.observe(target, { childList: true, subtree: true });
+
+  // Don't leak observers — give up after 30s
+  setTimeout(() => observer.disconnect(), 30_000);
+}
 
 async function processFile(
   container: HTMLElement,
