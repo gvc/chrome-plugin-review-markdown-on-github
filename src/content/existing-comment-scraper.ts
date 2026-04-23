@@ -6,10 +6,10 @@ const commentCache = new Map<string, ExistingComment[]>();
 /**
  * Scrape existing inline review comments from the source diff table.
  *
- * GitHub renders comments as special rows/elements after the code line
- * they reference. We walk the table looking for comment thread containers
- * and extract author, avatar, HTML body, and the line number from the
- * preceding code row.
+ * GitHub (2024+ React DOM) renders inline comments inside <td> cells that
+ * contain <div data-inline-markers="true"> wrappers.  Each comment thread
+ * lives inside a [data-testid="review-thread"] and individual comments are
+ * wrapped in elements whose class includes "ReviewThreadComment-module".
  *
  * Must be called while the source diff table is in the DOM.
  */
@@ -20,6 +20,7 @@ export function scrapeExistingComments(
   const cached = commentCache.get(filePath);
   if (cached !== undefined) return cached;
 
+  // Find the diff table — may be inside container or in a sibling element
   const table =
     container.querySelector<HTMLElement>('table') ??
     findSibling(container, (s) =>
@@ -33,63 +34,110 @@ export function scrapeExistingComments(
 
   const comments: ExistingComment[] = [];
 
-  // Strategy 1: New GitHub DOM (2024+)
-  // Comment threads sit in rows with td that contain .js-comments-holder
-  // or in elements with [data-line-comment-thread] / .inline-comment-thread
-  scrapeNewDom(table, comments);
+  // Primary strategy: React-based GitHub DOM (2024+)
+  // Comments sit inside td cells with [data-inline-markers="true"] divs
+  scrapeReactInlineMarkers(table, comments);
 
-  // Strategy 2: Legacy GitHub DOM
-  // Comments live in .js-inline-comments-container or .inline-comments rows
+  // Fallback: look for [data-testid="review-thread"] anywhere in the table
   if (comments.length === 0) {
-    scrapeLegacyDom(table, comments);
+    scrapeReviewThreads(table, comments);
   }
 
-  // Strategy 3: React-based diff (newest GitHub)
-  // Comments appear in elements within the diff that have comment-like structure
+  // Fallback: legacy DOM with .inline-comments rows
   if (comments.length === 0) {
-    scrapeReactDom(container, comments);
+    scrapeLegacyDom(table, comments);
   }
 
   commentCache.set(filePath, comments);
   return comments;
 }
 
-function scrapeNewDom(table: HTMLElement, out: ExistingComment[]): void {
-  // New GitHub: comment threads appear in rows after code rows.
-  // Look for elements containing review comment markup.
-  const commentHolders = table.querySelectorAll<HTMLElement>(
-    '.js-comments-holder, .js-inline-comments-container, [data-morpheus-enabled]'
-  );
+/**
+ * Primary strategy: GitHub's React DOM (2024+).
+ *
+ * Structure:
+ *   <td data-line-number="16" class="right-side-diff-cell">
+ *     ...code content...
+ *     <div data-inline-markers="true">
+ *       <div class="InlineMarkers-module__markersWrapper__...">
+ *         <div data-first-marker="true" data-marker-id="...">
+ *           <div data-testid="review-thread">
+ *             <h2>Comment on line <span>R16</span></h2>
+ *             <div class="...ReviewThreadComment-module__ReviewThreadContainer__...">
+ *               ... author, avatar, body, timestamp ...
+ *             </div>
+ *           </div>
+ *         </div>
+ *       </div>
+ *     </div>
+ *   </td>
+ */
+function scrapeReactInlineMarkers(table: HTMLElement, out: ExistingComment[]): void {
+  const markers = table.querySelectorAll<HTMLElement>('[data-inline-markers="true"]');
 
-  for (const holder of commentHolders) {
-    const lineNumber = findLineNumberForCommentHolder(holder);
+  for (const marker of markers) {
+    // Line number: from the parent <td data-line-number="N">
+    const lineNumber = getLineNumberFromAncestorTd(marker)
+      ?? getLineNumberFromThreadHeading(marker);
     if (!lineNumber) continue;
 
-    const threads = holder.querySelectorAll<HTMLElement>(
-      '.review-comment, .timeline-comment, [data-testid="comment-body"]'
+    // Each comment inside the thread
+    const commentEls = marker.querySelectorAll<HTMLElement>(
+      '[class*="ReviewThreadComment-module__ReviewThreadContainer"], [class*="review-thread-component"]'
     );
 
-    for (const thread of threads) {
-      const comment = extractCommentFromElement(thread, lineNumber);
-      if (comment) out.push(comment);
+    if (commentEls.length > 0) {
+      for (const el of commentEls) {
+        const comment = extractComment(el, lineNumber);
+        if (comment) out.push(comment);
+      }
+    } else {
+      // Fallback: try the whole marker as a single comment container
+      const threads = marker.querySelectorAll<HTMLElement>('[data-testid="review-thread"]');
+      for (const thread of threads) {
+        const comment = extractComment(thread, lineNumber);
+        if (comment) out.push(comment);
+      }
     }
+  }
+}
 
-    // If no structured comments found, try extracting from the holder directly
-    if (threads.length === 0) {
-      const comment = extractCommentFromElement(holder, lineNumber);
+/**
+ * Fallback: find [data-testid="review-thread"] elements in the table.
+ */
+function scrapeReviewThreads(table: HTMLElement, out: ExistingComment[]): void {
+  const threads = table.querySelectorAll<HTMLElement>('[data-testid="review-thread"]');
+
+  for (const thread of threads) {
+    const lineNumber = getLineNumberFromAncestorTd(thread)
+      ?? getLineNumberFromThreadHeading(thread);
+    if (!lineNumber) continue;
+
+    const commentEls = thread.querySelectorAll<HTMLElement>(
+      '[class*="ReviewThreadComment-module__ReviewThreadContainer"]'
+    );
+
+    if (commentEls.length > 0) {
+      for (const el of commentEls) {
+        const comment = extractComment(el, lineNumber);
+        if (comment) out.push(comment);
+      }
+    } else {
+      const comment = extractComment(thread, lineNumber);
       if (comment) out.push(comment);
     }
   }
 }
 
+/**
+ * Legacy fallback: .inline-comments rows with .review-comment elements.
+ */
 function scrapeLegacyDom(table: HTMLElement, out: ExistingComment[]): void {
-  // Legacy: .inline-comments rows contain .review-comment elements
   const commentRows = table.querySelectorAll<HTMLElement>(
     'tr.inline-comments, tr.js-inline-comments-container'
   );
 
   for (const row of commentRows) {
-    // Line number from the preceding code row
     const prevRow = row.previousElementSibling as HTMLElement | null;
     const lineNumber = prevRow ? getLineNumberFromRow(prevRow) : null;
     if (!lineNumber) continue;
@@ -99,120 +147,76 @@ function scrapeLegacyDom(table: HTMLElement, out: ExistingComment[]): void {
     );
 
     for (const el of comments) {
-      const comment = extractCommentFromElement(el, lineNumber);
+      const comment = extractComment(el, lineNumber);
       if (comment) out.push(comment);
     }
   }
 }
 
-function scrapeReactDom(container: HTMLElement, out: ExistingComment[]): void {
-  // Newest React diff: comments may be in a sibling or nested structure
-  // Look for comment containers near the diff table
-  const commentContainers = container.querySelectorAll<HTMLElement>(
-    '[data-line-comment], [class*="InlineComment"], [class*="review-thread"]'
-  );
+// --- Line number extraction ---
 
-  for (const el of commentContainers) {
-    // Try to find line number from nearby elements
-    const lineAttr = el.closest<HTMLElement>('[data-line-number]');
-    const lineNumber = lineAttr
-      ? parseInt(lineAttr.getAttribute('data-line-number') ?? '', 10)
-      : null;
-    if (!lineNumber) continue;
-
-    const comment = extractCommentFromElement(el, lineNumber);
-    if (comment) out.push(comment);
-  }
-}
-
-/**
- * Walk upward/backward from a comment holder to find the associated line number.
- */
-function findLineNumberForCommentHolder(holder: HTMLElement): number | null {
-  // Check if holder itself has a line number
-  const directLine = holder.closest<HTMLElement>('[data-line-number]');
-  if (directLine) {
-    const n = parseInt(directLine.getAttribute('data-line-number') ?? '', 10);
+function getLineNumberFromAncestorTd(el: HTMLElement): number | null {
+  const td = el.closest<HTMLElement>('td[data-line-number]');
+  if (td) {
+    const n = parseInt(td.getAttribute('data-line-number') ?? '', 10);
     if (n > 0) return n;
   }
+  return null;
+}
 
-  // Check the closest <tr>, then walk to previous sibling rows
-  const row = holder.closest('tr');
-  if (row) {
-    const lineNum = getLineNumberFromRow(row as HTMLElement);
-    if (lineNum) return lineNum;
-
-    // Walk backward through sibling rows to find the code row
-    let prev = row.previousElementSibling as HTMLElement | null;
-    while (prev) {
-      const n = getLineNumberFromRow(prev);
-      if (n) return n;
-      prev = prev.previousElementSibling as HTMLElement | null;
+function getLineNumberFromThreadHeading(el: HTMLElement): number | null {
+  // <h2>Comment on line <span>R16</span></h2>
+  const headings = el.querySelectorAll<HTMLElement>('h2');
+  for (const h of headings) {
+    const text = h.textContent ?? '';
+    const match = text.match(/line\s+R?(\d+)/i);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > 0) return n;
     }
   }
-
   return null;
 }
 
 function getLineNumberFromRow(row: HTMLElement): number | null {
-  // New DOM
-  const newCell = row.querySelector<HTMLElement>(
-    'td.new-diff-line-number[data-line-number]'
-  );
-  if (newCell) {
-    const n = parseInt(newCell.getAttribute('data-line-number') ?? '', 10);
+  const cell = row.querySelector<HTMLElement>('td[data-line-number]');
+  if (cell) {
+    const n = parseInt(cell.getAttribute('data-line-number') ?? '', 10);
     if (n > 0) return n;
   }
-
-  // Legacy DOM
-  const oldCell = row.querySelector<HTMLElement>(
-    'td.blob-num-addition[data-line-number], td.blob-num-context[data-line-number]'
-  );
-  if (oldCell) {
-    const n = parseInt(oldCell.getAttribute('data-line-number') ?? '', 10);
-    if (n > 0) return n;
-  }
-
-  // Any td with data-line-number
-  const anyCell = row.querySelector<HTMLElement>('td[data-line-number]');
-  if (anyCell) {
-    const n = parseInt(anyCell.getAttribute('data-line-number') ?? '', 10);
-    if (n > 0) return n;
-  }
-
   return null;
 }
 
-/**
- * Extract a single comment from a DOM element.
- */
-function extractCommentFromElement(
-  el: HTMLElement,
-  lineNumber: number
-): ExistingComment | null {
-  // Author: look for common author selectors
+// --- Comment extraction ---
+
+function extractComment(el: HTMLElement, lineNumber: number): ExistingComment | null {
+  // Author — CSS module class with "AuthorName" or "ActivityHeader"
   const authorEl =
-    el.querySelector<HTMLElement>('.author, [data-testid="author"], a.Link--primary') ??
-    el.querySelector<HTMLElement>('.timeline-comment-header a, .comment-header a');
+    el.querySelector<HTMLElement>('[class*="ActivityHeader-module__AuthorName"]') ??
+    el.querySelector<HTMLElement>('[class*="AuthorName"]') ??
+    el.querySelector<HTMLElement>('.author') ??
+    el.querySelector<HTMLElement>('a.Link--primary');
   const author = authorEl?.textContent?.trim() ?? '';
 
-  // Avatar
-  const avatarEl = el.querySelector<HTMLImageElement>(
-    'img.avatar, img[data-testid="avatar"], img.avatar-user'
-  );
+  // Avatar — CSS module class with "activityAvatar" or "Avatar-module"
+  const avatarEl =
+    el.querySelector<HTMLImageElement>('[class*="Avatar-module__activityAvatar"]') ??
+    el.querySelector<HTMLImageElement>('[class*="activityAvatar"]') ??
+    el.querySelector<HTMLImageElement>('img.avatar, img.avatar-user');
   const avatarUrl = avatarEl?.src ?? '';
 
-  // Body: prefer rendered markdown body
+  // Body — rendered markdown in SafeHTMLBox or markdown-body
   const bodyEl =
-    el.querySelector<HTMLElement>('.comment-body, .review-comment-body, .markdown-body, [data-testid="comment-body"]') ??
-    el.querySelector<HTMLElement>('.edit-comment-hide');
+    el.querySelector<HTMLElement>('[class*="SafeHTMLBox"]') ??
+    el.querySelector<HTMLElement>('.markdown-body') ??
+    el.querySelector<HTMLElement>('[class*="comment-body"]') ??
+    el.querySelector<HTMLElement>('[data-testid="comment-body"]');
   const bodyHtml = bodyEl?.innerHTML?.trim() ?? '';
 
   // Timestamp
   const timeEl = el.querySelector<HTMLElement>('relative-time, time');
   const createdAt = timeEl?.getAttribute('datetime') ?? '';
 
-  // Skip if no meaningful body content
   if (!bodyHtml) return null;
 
   return { author, avatarUrl, bodyHtml, lineNumber, createdAt };
