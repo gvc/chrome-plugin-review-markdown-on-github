@@ -19,6 +19,8 @@ import { attachClickHandlers, detachClickHandlers } from './click-handler';
 import { showCommentForm } from './comment-form';
 import { triggerNativeCommentOnLine } from './native-comment-trigger';
 import { enqueueComment, dequeueComment, getQueuedComments, getCommentForLine, updateComment, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
+import { scrapeExistingComments, clearExistingCommentCache } from './existing-comment-scraper';
+import { renderExistingComments, clearRenderedComments } from './existing-comment-renderer';
 import { parsePRUrl, makePrKey } from '../shared/url-parser';
 import { purgeStale } from './comment-store';
 
@@ -56,9 +58,15 @@ async function initialize(): Promise<void> {
       // The toggle observer below will scrape when the user first switches to source diff,
       // then processFile when they switch back to rich diff.
     } else {
-      // Source diff is active — scrape raw markdown now while table is in DOM.
+      // Source diff is active — scrape raw markdown and existing comments now.
       const scraped = scrapeRawFromSourceDiff(container, filePath);
       console.debug(`[MDR] Init scrape for ${filePath}: ${scraped ? scraped.split('\n').length + ' lines' : 'null (will retry on toggle)'}`);
+
+      // Scrape existing review comments while table is visible
+      const existingComments = scrapeExistingComments(container, filePath);
+      if (existingComments.length > 0) {
+        console.debug(`[MDR] Found ${existingComments.length} existing comment(s) for ${filePath}`);
+      }
 
       // If scrape failed, the table is probably lazy-loaded (file below the fold).
       // Watch for it to appear so we have raw markdown ready before first toggle.
@@ -93,10 +101,15 @@ async function initialize(): Promise<void> {
           processingFile = false;
         }
       } else {
-        // Switched to source diff — clear stale cache and re-scrape
+        // Switched to source diff — clear stale caches and re-scrape
         clearScrapedCache(filePath);
+        clearExistingCommentCache(filePath);
         scrapeRawFromSourceDiff(container, filePath);
-        if (article) detachClickHandlers(article);
+        scrapeExistingComments(container, filePath);
+        if (article) {
+          detachClickHandlers(article);
+          clearRenderedComments(article);
+        }
         // Dump all queued comments to console as last-resort backup
         const allQueued = getAllQueued();
         if (allQueued.size > 0) {
@@ -129,6 +142,7 @@ function observeTableInsertion(container: HTMLElement, filePath: string): void {
     const scraped = scrapeRawFromSourceDiff(container, filePath);
     if (scraped) {
       console.debug(`[MDR] Lazy-loaded table scraped for ${filePath}: ${scraped.split('\n').length} lines`);
+      scrapeExistingComments(container, filePath);
       observer.disconnect();
     }
   });
@@ -164,6 +178,13 @@ async function processFile(
   console.debug(`[MDR] Mapped ${elementToLine.size} elements to lines`);
 
   applyCommentedIndicators(filePath, lineToElement);
+
+  // Render existing PR review comments on matching elements
+  const existingComments = scrapeExistingComments(container, filePath);
+  if (existingComments.length > 0) {
+    renderExistingComments(existingComments, lineToElement);
+    console.debug(`[MDR] Rendered ${existingComments.length} existing comment(s) for ${filePath}`);
+  }
 
   // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
@@ -291,6 +312,7 @@ function reinitialize(): void {
   reinitTimeout = setTimeout(() => {
     clearPayloadCache();
     clearLineMapCaches();
+    clearExistingCommentCache();
     // DO NOT clear queue — persisted comments must survive navigation
     initialize();
   }, 300);

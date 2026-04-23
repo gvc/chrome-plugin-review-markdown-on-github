@@ -205,6 +205,76 @@
   transform: translateY(0);
 }
 
+/* === Existing comments (read-only) === */
+.mdr-existing-comments {
+  margin: 6px 0 4px 0;
+}
+
+.mdr-ec-bubble {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid #d0d7de;
+  border-left: 3px solid #0969da;
+  border-radius: 6px;
+  background: #f6f8fa;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: #24292f;
+}
+
+.mdr-ec-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.mdr-ec-avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mdr-ec-author {
+  font-size: 12px;
+  color: #24292f;
+}
+
+.mdr-ec-time {
+  font-size: 11px;
+  color: #6e7781;
+  margin-left: auto;
+}
+
+.mdr-ec-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #24292f;
+  overflow-wrap: break-word;
+}
+
+.mdr-ec-body p {
+  margin: 0 0 4px;
+}
+
+.mdr-ec-body p:last-child {
+  margin-bottom: 0;
+}
+
+.mdr-ec-body code {
+  padding: 0.2em 0.4em;
+  background: rgba(175, 184, 193, 0.2);
+  border-radius: 3px;
+  font-size: 85%;
+}
+
+.mdr-ec-body pre {
+  margin: 4px 0;
+  padding: 8px;
+  background: #0d1117;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
 /* === Dark mode support === */
 @media (prefers-color-scheme: dark) {
   .mdr-hover-btn {
@@ -269,5 +339,28 @@
   .mdr-toast {
     background: #c9d1d9;
     color: #0d1117;
+  }
+
+  .mdr-ec-bubble {
+    background: #0d1117;
+    border-color: #30363d;
+    border-left-color: #58a6ff;
+    color: #c9d1d9;
+  }
+
+  .mdr-ec-author {
+    color: #c9d1d9;
+  }
+
+  .mdr-ec-time {
+    color: #8b949e;
+  }
+
+  .mdr-ec-body {
+    color: #c9d1d9;
+  }
+
+  .mdr-ec-body code {
+    background: rgba(110, 118, 129, 0.4);
   }
 }

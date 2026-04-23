@@ -47,3 +47,11 @@ export interface PersistedComment {
 export interface PersistedQueue {
   [prKey: string]: PersistedComment[];
 }
+
+export interface ExistingComment {
+  author: string;
+  avatarUrl: string;
+  bodyHtml: string;
+  lineNumber: number;
+  createdAt: string;
+}
