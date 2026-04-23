@@ -7,6 +7,8 @@ import {
   observeRichDiffToggle,
   markProcessed,
   isProcessed,
+  switchToSourceDiff,
+  switchToRichDiff,
 } from './rich-diff-detector';
 import {
   scrapeRawFromSourceDiff,
@@ -28,13 +30,16 @@ async function initialize(): Promise<void> {
   const { enabled } = await chrome.storage.sync.get('enabled');
   if (enabled === false) return;
 
+  const { version } = chrome.runtime.getManifest();
+  console.debug(`[MDR v${version}] Initializing`);
+
   const payload = extractPayload();
   if (!payload) {
-    console.debug('[MDR] Could not extract GitHub payload');
+    console.debug(`[MDR v${version}] Could not extract GitHub payload`);
     return;
   }
 
-  console.debug('[MDR] Payload extracted:', payload.owner, payload.repo, '#' + payload.prNumber);
+  console.debug(`[MDR v${version}] Payload extracted:`, payload.owner, payload.repo, '#' + payload.prNumber);
 
   // Restore persisted comments and purge stale ones
   const prUrl = parsePRUrl();
@@ -54,18 +59,30 @@ async function initialize(): Promise<void> {
     if (isProcessed(container)) continue;
 
     if (isRichDiffActive(container)) {
-      // Rich diff already active — no source table in DOM yet, nothing to scrape.
-      // The toggle observer below will scrape when the user first switches to source diff,
-      // then processFile when they switch back to rich diff.
+      // Rich diff active on load — programmatically toggle to source to scrape raw markdown,
+      // then toggle back. Eliminates the manual "toggle once to prime" requirement.
+      (async () => {
+        const switched = await switchToSourceDiff(container);
+        if (switched) {
+          scrapeRawFromSourceDiff(container, filePath);
+          scrapeExistingComments(container, filePath);
+          await switchToRichDiff(container);
+          await processFile(container, filePath);
+        }
+      })();
     } else {
       // Source diff is active — scrape raw markdown and existing comments now.
       const scraped = scrapeRawFromSourceDiff(container, filePath);
       console.debug(`[MDR] Init scrape for ${filePath}: ${scraped ? scraped.split('\n').length + ' lines' : 'null (will retry on toggle)'}`);
 
-      // Scrape existing review comments while table is visible
+      // Scrape existing review comments while table is visible.
+      // Comments may load async after the table — if empty, watch for them.
       const existingComments = scrapeExistingComments(container, filePath);
       if (existingComments.length > 0) {
         console.debug(`[MDR] Found ${existingComments.length} existing comment(s) for ${filePath}`);
+      } else if (scraped) {
+        // Table is present but no comments yet — they may arrive later
+        observeCommentInsertion(container, filePath);
       }
 
       // If scrape failed, the table is probably lazy-loaded (file below the fold).
@@ -75,56 +92,60 @@ async function initialize(): Promise<void> {
       }
     }
 
-    // Watch for future rich/source diff toggles
+    // Watch for future rich/source diff toggles.
+    // Debounce: GitHub's React DOM mutates heavily mid-transition, firing the observer
+    // multiple times. Wait 300ms of stable state, then re-read ground truth.
     let lastRichDiffState = isRichDiffActive(container);
     let processingFile = false;
+    let settleTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    observeRichDiffToggle(container, async (active) => {
-      // Ignore mutations that didn't actually change the view state
-      if (active === lastRichDiffState) return;
-      lastRichDiffState = active;
+    observeRichDiffToggle(container, () => {
+      if (settleTimeout) clearTimeout(settleTimeout);
+      settleTimeout = setTimeout(async () => {
+        settleTimeout = null;
+        const active = isRichDiffActive(container);
+        if (active === lastRichDiffState) return;
+        lastRichDiffState = active;
 
-      const article = getMarkdownArticle(container);
-      if (active && article) {
-        // Switched to rich diff — ensure we have raw markdown
-        // Try scraping now in case init scrape failed (e.g. lazy-loaded table)
-        const raw = scrapeRawFromSourceDiff(container, filePath);
-        if (!raw) {
-          console.warn(`[MDR] No cached raw markdown for ${filePath} — toggle to Source diff first`);
-          return;
-        }
-        if (processingFile) return;
-        processingFile = true;
-        try {
-          await processFile(container, filePath);
-        } finally {
-          processingFile = false;
-        }
-      } else {
-        // Switched to source diff — clear stale caches and re-scrape
-        clearScrapedCache(filePath);
-        clearExistingCommentCache(filePath);
-        scrapeRawFromSourceDiff(container, filePath);
-        scrapeExistingComments(container, filePath);
-        if (article) {
-          detachClickHandlers(article);
-          clearRenderedComments(article);
-        }
-        // Dump all queued comments to console as last-resort backup
-        const allQueued = getAllQueued();
-        if (allQueued.size > 0) {
-          console.info('[MDR] All queued comments (backup dump):');
-          for (const [fp, comments] of allQueued) {
-            for (const c of comments) {
-              console.info(`[MDR]   ${fp}:${c.lineNumber} — ${c.body}`);
+        const article = getMarkdownArticle(container);
+        if (active && article) {
+          const raw = scrapeRawFromSourceDiff(container, filePath);
+          if (!raw) {
+            console.warn(`[MDR] No cached raw markdown for ${filePath} — toggle to Source diff first`);
+            return;
+          }
+          if (processingFile) return;
+          processingFile = true;
+          try {
+            await processFile(container, filePath);
+          } finally {
+            processingFile = false;
+          }
+        } else {
+          // Switched to source diff — clear stale caches and re-scrape
+          clearScrapedCache(filePath);
+          clearExistingCommentCache(filePath);
+          scrapeRawFromSourceDiff(container, filePath);
+          scrapeExistingComments(container, filePath);
+          if (article) {
+            detachClickHandlers(article);
+            clearRenderedComments(article);
+          }
+          // Dump all queued comments to console as last-resort backup
+          const allQueued = getAllQueued();
+          if (allQueued.size > 0) {
+            console.info('[MDR] All queued comments (backup dump):');
+            for (const [fp, comments] of allQueued) {
+              for (const c of comments) {
+                console.info(`[MDR]   ${fp}:${c.lineNumber} — ${c.body}`);
+              }
             }
           }
+          if (hasQueued(filePath)) {
+            await flushQueue(container, filePath);
+          }
         }
-        // Flush any queued comments for this file
-        if (hasQueued(filePath)) {
-          await flushQueue(container, filePath);
-        }
-      }
+      }, 300);
     });
 
     markProcessed(container);
@@ -153,6 +174,29 @@ function observeTableInsertion(container: HTMLElement, filePath: string): void {
   observer.observe(target, { childList: true, subtree: true });
 
   // Don't leak observers — give up after 30s
+  setTimeout(() => observer.disconnect(), 30_000);
+}
+
+/**
+ * Watch for inline comment markers to appear in a container whose table is
+ * already loaded but has no comments yet (GitHub renders them async).
+ * Disconnects after a successful scrape or after 30s.
+ */
+function observeCommentInsertion(container: HTMLElement, filePath: string): void {
+  const observer = new MutationObserver(() => {
+    // Cheap early-exit: skip full scrape if no comment markers are present yet
+    const target = container.parentElement ?? container;
+    if (!target.querySelector('[data-inline-markers], [data-testid="review-thread"]')) return;
+    const comments = scrapeExistingComments(container, filePath);
+    if (comments.length > 0) {
+      console.debug(`[MDR] Late-arriving comments scraped for ${filePath}: ${comments.length}`);
+      observer.disconnect();
+    }
+  });
+
+  const target = container.parentElement ?? container;
+  observer.observe(target, { childList: true, subtree: true });
+
   setTimeout(() => observer.disconnect(), 30_000);
 }
 
@@ -186,8 +230,18 @@ async function processFile(
     console.debug(`[MDR] Rendered ${existingComments.length} existing comment(s) for ${filePath}`);
   }
 
+  // Lines that already have PR review comments — don't allow new comments on these
+  const existingCommentLines = new Set(existingComments.map((c) => c.lineNumber));
+  for (const line of existingCommentLines) {
+    const el = lineToElement.get(line);
+    if (el) el.classList.add('mdr-has-existing');
+  }
+
   // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
+    // Skip lines that already have existing PR comments
+    if (existingCommentLines.has(match.lineNumber)) return;
+
     const existing = getCommentForLine(filePath, match.lineNumber);
     if (existing) {
       showCommentForm(

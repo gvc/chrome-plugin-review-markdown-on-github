@@ -18,7 +18,7 @@ export function scrapeExistingComments(
   filePath: string
 ): ExistingComment[] {
   const cached = commentCache.get(filePath);
-  if (cached !== undefined) return cached;
+  if (cached) return cached;
 
   // Find the diff table — may be inside container or in a sibling element
   const table =
@@ -28,25 +28,42 @@ export function scrapeExistingComments(
     );
 
   if (!table) {
-    commentCache.set(filePath, []);
+    console.debug(`[MDR] Comment scraper: no table found for ${filePath}`);
     return [];
+  }
+
+  // Search scope: the table itself, but also the broader container and its
+  // siblings.  GitHub's React DOM sometimes renders inline comment threads
+  // outside the <table> (e.g. in a wrapper div alongside it).
+  const searchRoots: HTMLElement[] = [table];
+  if (table !== container) searchRoots.push(container);
+  // Also check parent — comments may sit next to the table in a shared wrapper
+  if (container.parentElement && container.parentElement !== document.body) {
+    searchRoots.push(container.parentElement);
   }
 
   const comments: ExistingComment[] = [];
 
   // Primary strategy: React-based GitHub DOM (2024+)
-  // Comments sit inside td cells with [data-inline-markers="true"] divs
-  scrapeReactInlineMarkers(table, comments);
+  for (const root of searchRoots) {
+    scrapeReactInlineMarkers(root, comments);
+    if (comments.length > 0) break;
+  }
 
-  // Fallback: look for [data-testid="review-thread"] anywhere in the table
+  // Fallback: look for [data-testid="review-thread"]
   if (comments.length === 0) {
-    scrapeReviewThreads(table, comments);
+    for (const root of searchRoots) {
+      scrapeReviewThreads(root, comments);
+      if (comments.length > 0) break;
+    }
   }
 
   // Fallback: legacy DOM with .inline-comments rows
   if (comments.length === 0) {
     scrapeLegacyDom(table, comments);
   }
+
+  console.debug(`[MDR] Comment scraper result for ${filePath}: ${comments.length} comment(s)`);
 
   commentCache.set(filePath, comments);
   return comments;
@@ -72,33 +89,18 @@ export function scrapeExistingComments(
  *     </div>
  *   </td>
  */
-function scrapeReactInlineMarkers(table: HTMLElement, out: ExistingComment[]): void {
-  const markers = table.querySelectorAll<HTMLElement>('[data-inline-markers="true"]');
+function scrapeReactInlineMarkers(root: HTMLElement, out: ExistingComment[]): void {
+  const markers = root.querySelectorAll<HTMLElement>('[data-inline-markers="true"]');
 
   for (const marker of markers) {
-    // Line number: from the parent <td data-line-number="N">
     const lineNumber = getLineNumberFromAncestorTd(marker)
       ?? getLineNumberFromThreadHeading(marker);
     if (!lineNumber) continue;
 
-    // Each comment inside the thread
-    const commentEls = marker.querySelectorAll<HTMLElement>(
-      '[class*="ReviewThreadComment-module__ReviewThreadContainer"], [class*="review-thread-component"]'
-    );
-
-    if (commentEls.length > 0) {
-      for (const el of commentEls) {
-        const comment = extractComment(el, lineNumber);
-        if (comment) out.push(comment);
-      }
-    } else {
-      // Fallback: try the whole marker as a single comment container
-      const threads = marker.querySelectorAll<HTMLElement>('[data-testid="review-thread"]');
-      for (const thread of threads) {
-        const comment = extractComment(thread, lineNumber);
-        if (comment) out.push(comment);
-      }
-    }
+    // Each real comment has exactly one SafeHTMLBox / markdown-body.
+    // Use leaf body elements as anchors to avoid nested-container duplication.
+    const bodyEls = marker.querySelectorAll<HTMLElement>('[class*="SafeHTMLBox"], .markdown-body');
+    extractLeafComments(bodyEls, lineNumber, out);
   }
 }
 
@@ -113,16 +115,11 @@ function scrapeReviewThreads(table: HTMLElement, out: ExistingComment[]): void {
       ?? getLineNumberFromThreadHeading(thread);
     if (!lineNumber) continue;
 
-    const commentEls = thread.querySelectorAll<HTMLElement>(
-      '[class*="ReviewThreadComment-module__ReviewThreadContainer"]'
-    );
-
-    if (commentEls.length > 0) {
-      for (const el of commentEls) {
-        const comment = extractComment(el, lineNumber);
-        if (comment) out.push(comment);
-      }
-    } else {
+    const bodyEls = thread.querySelectorAll<HTMLElement>('[class*="SafeHTMLBox"], .markdown-body');
+    const beforeLen = out.length;
+    extractLeafComments(bodyEls, lineNumber, out);
+    // If no bodies found, try the thread as a whole
+    if (out.length === beforeLen) {
       const comment = extractComment(thread, lineNumber);
       if (comment) out.push(comment);
     }
@@ -187,10 +184,79 @@ function getLineNumberFromRow(row: HTMLElement): number | null {
   return null;
 }
 
-// --- Comment extraction ---
+// --- Shared extraction helpers ---
 
+/**
+ * Given a set of body elements, keep only leaf nodes (no nested matches),
+ * then extract and deduplicate comments into `out`.
+ */
+function extractLeafComments(
+  bodyEls: NodeListOf<HTMLElement>,
+  lineNumber: number,
+  out: ExistingComment[]
+): void {
+  const bodySelector = '[class*="SafeHTMLBox"], .markdown-body';
+  const leafBodies: HTMLElement[] = [];
+  for (const b of bodyEls) {
+    if (!b.querySelector(bodySelector)) leafBodies.push(b);
+  }
+
+  const seen = new Set<string>();
+  for (const body of leafBodies) {
+    // Walk up to the per-comment wrapper — use ReviewThreadContainer specifically
+    // to avoid hitting a shared ancestor that wraps multiple comments.
+    const wrapper =
+      body.closest<HTMLElement>('[class*="ReviewThreadContainer"]') ??
+      body.closest<HTMLElement>('[class*="ReviewThreadComment-module"]') ??
+      body.parentElement;
+    if (!wrapper) continue;
+
+    const comment = extractCommentFromWrapper(wrapper, body, lineNumber);
+    if (!comment) continue;
+
+    const key = `${lineNumber}:${comment.author}:${comment.bodyHtml.slice(0, 80)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(comment);
+  }
+}
+
+/**
+ * Extract a comment given its wrapper element and the already-located body element.
+ * Searches the wrapper for author/avatar/timestamp metadata.
+ */
+function extractCommentFromWrapper(
+  wrapper: HTMLElement,
+  bodyEl: HTMLElement,
+  lineNumber: number
+): ExistingComment | null {
+  const authorEl =
+    wrapper.querySelector<HTMLElement>('[class*="ActivityHeader-module__AuthorName"]') ??
+    wrapper.querySelector<HTMLElement>('[class*="AuthorName"]') ??
+    wrapper.querySelector<HTMLElement>('.author') ??
+    wrapper.querySelector<HTMLElement>('a.Link--primary');
+  const author = authorEl?.textContent?.trim() ?? '';
+
+  const avatarEl =
+    wrapper.querySelector<HTMLImageElement>('[class*="Avatar-module__activityAvatar"]') ??
+    wrapper.querySelector<HTMLImageElement>('[class*="activityAvatar"]') ??
+    wrapper.querySelector<HTMLImageElement>('img.avatar, img.avatar-user');
+  const avatarUrl = avatarEl?.src ?? '';
+
+  const bodyHtml = bodyEl.innerHTML?.trim() ?? '';
+
+  const timeEl = wrapper.querySelector<HTMLElement>('relative-time, time');
+  const createdAt = timeEl?.getAttribute('datetime') ?? '';
+
+  if (!bodyHtml) return null;
+
+  return { author, avatarUrl, bodyHtml, lineNumber, createdAt };
+}
+
+/**
+ * Legacy extraction — searches el for all parts.
+ */
 function extractComment(el: HTMLElement, lineNumber: number): ExistingComment | null {
-  // Author — CSS module class with "AuthorName" or "ActivityHeader"
   const authorEl =
     el.querySelector<HTMLElement>('[class*="ActivityHeader-module__AuthorName"]') ??
     el.querySelector<HTMLElement>('[class*="AuthorName"]') ??
@@ -198,14 +264,12 @@ function extractComment(el: HTMLElement, lineNumber: number): ExistingComment | 
     el.querySelector<HTMLElement>('a.Link--primary');
   const author = authorEl?.textContent?.trim() ?? '';
 
-  // Avatar — CSS module class with "activityAvatar" or "Avatar-module"
   const avatarEl =
     el.querySelector<HTMLImageElement>('[class*="Avatar-module__activityAvatar"]') ??
     el.querySelector<HTMLImageElement>('[class*="activityAvatar"]') ??
     el.querySelector<HTMLImageElement>('img.avatar, img.avatar-user');
   const avatarUrl = avatarEl?.src ?? '';
 
-  // Body — rendered markdown in SafeHTMLBox or markdown-body
   const bodyEl =
     el.querySelector<HTMLElement>('[class*="SafeHTMLBox"]') ??
     el.querySelector<HTMLElement>('.markdown-body') ??
@@ -213,7 +277,6 @@ function extractComment(el: HTMLElement, lineNumber: number): ExistingComment | 
     el.querySelector<HTMLElement>('[data-testid="comment-body"]');
   const bodyHtml = bodyEl?.innerHTML?.trim() ?? '';
 
-  // Timestamp
   const timeEl = el.querySelector<HTMLElement>('relative-time, time');
   const createdAt = timeEl?.getAttribute('datetime') ?? '';
 

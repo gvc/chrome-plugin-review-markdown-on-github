@@ -110,6 +110,8 @@ export function attachClickHandlers(
     el.addEventListener('mouseenter', () => {
       // Don't show on elements inside an open comment form
       if (el.closest('.mdr-comment-form')) return;
+      // Don't show on lines that already have existing PR comments
+      if (el.classList.contains('mdr-has-existing')) return;
       showButton(el);
     });
 

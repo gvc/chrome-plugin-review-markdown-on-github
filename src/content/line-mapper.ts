@@ -37,9 +37,11 @@ export function scrapeRawFromSourceDiff(
     let lineNum: number | null = null;
     let codeCell: HTMLElement | null = null;
 
-    // num cell: has new-diff-line-number class but NOT right-side-diff-cell
+    // Select right (head) side explicitly — split diffs render both sides with new-diff-line-number
     const newNumCell = row.querySelector<HTMLTableCellElement>(
-      'td.new-diff-line-number[data-line-number]:not(.right-side-diff-cell)'
+      'td[data-diff-side="right"][data-line-number]'
+    ) ?? row.querySelector<HTMLTableCellElement>(
+      'td.new-diff-line-number[data-line-number]:not([data-diff-side="left"]):not(.right-side-diff-cell)'
     );
     if (newNumCell) {
       lineNum = parseInt(newNumCell.getAttribute('data-line-number') ?? '', 10);
