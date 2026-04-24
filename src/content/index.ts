@@ -23,7 +23,7 @@ import { triggerNativeCommentOnLine } from './native-comment-trigger';
 import { enqueueComment, dequeueComment, getQueuedComments, getCommentForLine, updateComment, hasQueued, getQueuedCount, getAllQueued, restoreQueue } from './comment-queue';
 import { scrapeExistingComments, clearExistingCommentCache } from './existing-comment-scraper';
 import { renderExistingComments, clearRenderedComments } from './existing-comment-renderer';
-import { parsePRUrl, makePrKey } from '../shared/url-parser';
+import { parsePRUrl, makePrKey, isPRChangesUrl } from '../shared/url-parser';
 import { purgeStale } from './comment-store';
 import {
   createMdrButton,
@@ -34,6 +34,8 @@ import {
 } from './comment-panel';
 
 async function initialize(): Promise<void> {
+  if (!isPRChangesUrl()) return;
+
   const { enabled } = await chrome.storage.sync.get('enabled');
   if (enabled === false) return;
 
@@ -402,6 +404,7 @@ function reinitialize(): void {
     closePanel();
     removeMdrButton();
     // DO NOT clear queue — persisted comments must survive navigation
+    // initialize() guards on isPRChangesUrl() — no-op on non-/changes pages
     initialize();
   }, 300);
 }
