@@ -245,17 +245,8 @@ async function processFile(
     console.debug(`[MDR] Rendered ${existingComments.length} existing comment(s) for ${filePath}`);
   }
 
-  // Lines that already have PR review comments — don't allow new comments on these
-  const existingCommentLines = new Set(existingComments.map((c) => c.lineNumber));
-  for (const line of existingCommentLines) {
-    const el = lineToElement.get(line);
-    if (el) el.classList.add('mdr-has-existing');
-  }
-
   // Attach click handlers — clicking opens comment form
   attachClickHandlers(article, lineMap, filePath, (element, match) => {
-    // Skip lines that already have existing PR comments
-    if (existingCommentLines.has(match.lineNumber)) return;
 
     const existing = getCommentForLine(filePath, match.lineNumber);
     if (existing) {

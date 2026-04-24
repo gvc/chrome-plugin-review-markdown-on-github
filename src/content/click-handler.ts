@@ -114,10 +114,9 @@ export function attachClickHandlers(
     el.dataset.mdrId = id;
 
     el.addEventListener('mouseenter', () => {
-      // Don't show on elements inside an open comment form
+      // Don't show on elements inside an open comment form or existing comment bubbles
       if (el.closest('.mdr-comment-form')) return;
-      // Don't show on lines that already have existing PR comments
-      if (el.classList.contains('mdr-has-existing')) return;
+      if (el.closest('.mdr-existing-comments')) return;
       showButton(el);
     });
 
