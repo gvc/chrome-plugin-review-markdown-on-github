@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Markdown Review for GitHub PRs",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "description": "Comment on rendered markdown in GitHub PR rich diff view",
-  "permissions": ["storage"],
+  "permissions": ["storage", "webNavigation"],
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
   "host_permissions": ["https://github.com/*"],
   "content_scripts": [
     {

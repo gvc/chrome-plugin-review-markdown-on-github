@@ -33,8 +33,8 @@ import {
   closePanel,
 } from './comment-panel';
 
-async function initialize(): Promise<void> {
-  if (!isPRChangesUrl()) return;
+async function initialize(force = false): Promise<void> {
+  if (!force && !isPRChangesUrl()) return;
 
   const { enabled } = await chrome.storage.sync.get('enabled');
   if (enabled === false) return;
@@ -369,9 +369,28 @@ function showToast(message: string): void {
 
 // --- SPA navigation handling ---
 
+let selfTabId: number | undefined;
+chrome.runtime.sendMessage({ type: 'mdr:getTabId' }, (resp) => {
+  if (chrome.runtime.lastError) return;
+  selfTabId = resp?.tabId;
+});
+
 function setupNavigationListeners(): void {
-  document.addEventListener('turbo:load', reinitialize);
-  window.addEventListener('popstate', reinitialize);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'session' || !changes.mdrNavEvent) return;
+    const { newValue } = changes.mdrNavEvent;
+    if (selfTabId !== undefined && newValue?.tabId !== selfTabId) {
+      console.debug('[MDR content] mdrNavEvent for other tab — skipping', { event: newValue.tabId, self: selfTabId });
+      return;
+    }
+    console.debug('[MDR content] mdrNavEvent storage change detected', newValue);
+    // Background already verified URL matches /changes.
+    // Force-bypass isPRChangesUrl() — window.location may still be stale.
+    reinitialize(true);
+  });
+
+  document.addEventListener('turbo:load', () => reinitialize());
+  window.addEventListener('popstate', () => reinitialize());
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
@@ -395,7 +414,7 @@ function setupNavigationListeners(): void {
 
 let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function reinitialize(): void {
+function reinitialize(force = false): void {
   if (reinitTimeout) clearTimeout(reinitTimeout);
   reinitTimeout = setTimeout(() => {
     clearPayloadCache();
@@ -404,8 +423,7 @@ function reinitialize(): void {
     closePanel();
     removeMdrButton();
     // DO NOT clear queue — persisted comments must survive navigation
-    // initialize() guards on isPRChangesUrl() — no-op on non-/changes pages
-    initialize();
+    initialize(force);
   }, 300);
 }
 

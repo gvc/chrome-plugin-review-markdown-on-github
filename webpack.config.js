@@ -6,6 +6,7 @@ module.exports = {
   entry: {
     'content/index': './src/content/index.ts',
     'popup/popup': './src/popup/popup.ts',
+    'background/index': './src/background/index.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
