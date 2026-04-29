@@ -26,26 +26,29 @@ export function scrapeRawFromSourceDiff(
   if (cached !== undefined) return cached;
 
   const table = findTableInContainer(container);
-  if (!table) return null;
+  if (!table) {
+    console.debug(`[MDR] scrapeRaw(${filePath}): no table found in container`);
+    return null;
+  }
 
   const lines: Array<{ num: number; text: string }> = [];
   const rows = table.querySelectorAll<HTMLTableRowElement>('tr');
 
   for (const row of rows) {
-    // New GitHub DOM (2024+): td.new-diff-line-number (number) + td.right-side-diff-cell (code)
+    // New GitHub DOM: td.new-diff-line-number[data-diff-side="right"] (number) + td.diff-text-cell[data-diff-side="right"] (code)
     // Old GitHub DOM: td.blob-num-addition / td.blob-num-context (number) + td.blob-code-* (code)
     let lineNum: number | null = null;
     let codeCell: HTMLElement | null = null;
 
     // Select right (head) side explicitly — split diffs render both sides with new-diff-line-number
     const newNumCell = row.querySelector<HTMLTableCellElement>(
-      'td[data-diff-side="right"][data-line-number]'
+      'td.new-diff-line-number[data-diff-side="right"][data-line-number]'
     ) ?? row.querySelector<HTMLTableCellElement>(
-      'td.new-diff-line-number[data-line-number]:not([data-diff-side="left"]):not(.right-side-diff-cell)'
+      'td.new-diff-line-number[data-line-number]:not([data-diff-side="left"])'
     );
     if (newNumCell) {
       lineNum = parseInt(newNumCell.getAttribute('data-line-number') ?? '', 10);
-      codeCell = row.querySelector<HTMLElement>('td.right-side-diff-cell');
+      codeCell = row.querySelector<HTMLElement>('td.diff-text-cell[data-diff-side="right"]');
     } else {
       const oldNumCell = row.querySelector<HTMLTableCellElement>(
         'td.blob-num-addition[data-line-number], td.blob-num-context[data-line-number]'

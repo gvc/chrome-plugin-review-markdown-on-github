@@ -121,7 +121,7 @@ async function triggerAddCommentButton(row: HTMLTableRowElement): Promise<boolea
 
   // Strategy 4: Click the right-side code cell
   const diffCell = row.querySelector<HTMLElement>(
-    'td[data-diff-side="right"].right-side-diff-cell, td.right-side-diff-cell[data-line-number]'
+    'td.diff-text-cell[data-diff-side="right"]'
   );
   if (diffCell) {
     const alreadyOpen = diffCell.querySelector<HTMLElement>('div[data-inline-markers][aria-hidden="false"]');
