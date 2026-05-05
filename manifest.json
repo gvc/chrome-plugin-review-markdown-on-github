@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Markdown Review for GitHub PRs",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Comment on rendered markdown in GitHub PR rich diff view",
   "permissions": ["storage", "webNavigation"],
   "background": {
@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://github.com/*/*/pull/*"
+        "https://github.com/*"
       ],
       "js": ["content/index.js"],
       "css": ["content/styles.css"],

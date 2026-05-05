@@ -124,3 +124,4 @@ Every code change bumps `manifest.json` version. Users reload the unpacked exten
 - [ADR-004](../docs/adr/0004-spa-nav-via-background-sw.md) — Background SW + `storage.session` for SPA navigation
 - [ADR-005](../docs/adr/0005-auto-prime-source-scrape.md) — Programmatic toggle on load to scrape raw markdown
 - [ADR-006](../docs/adr/0006-right-side-targeting.md) — Always target `data-diff-side="right"` for split diffs
+- [ADR-007](../docs/adr/0007-broad-manifest-match.md) — Inject content script on all of `github.com` so SPA nav into PRs activates MDR

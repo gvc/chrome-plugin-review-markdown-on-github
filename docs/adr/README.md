@@ -10,5 +10,6 @@ Each ADR captures a decision, the context that forced it, and the trade-offs acc
 | [0004](0004-spa-nav-via-background-sw.md) | Detect SPA navigation via background SW + `storage.session` | Accepted |
 | [0005](0005-auto-prime-source-scrape.md) | Auto-prime the source scrape on load | Accepted |
 | [0006](0006-right-side-targeting.md) | Always target `data-diff-side="right"` for split diffs | Accepted |
+| [0007](0007-broad-manifest-match.md) | Inject content script on all of `github.com` | Accepted |
 
 System overview: [`specs/system-overview.md`](../../specs/system-overview.md).
