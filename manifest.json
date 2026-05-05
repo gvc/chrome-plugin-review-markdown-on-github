@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Markdown Review for GitHub PRs",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Comment on rendered markdown in GitHub PR rich diff view",
   "permissions": ["storage", "webNavigation"],
   "background": {
