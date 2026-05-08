@@ -37,6 +37,18 @@ Per-tab filtering: content script asks the background for its own `tabId` once a
 - Adds a service worker bundle (`background/index.ts`). Tiny, but it's another thing to load.
 - Need a `mdr:getTabId` round-trip on content-script bootstrap to filter events. One message; cheap.
 
+## Gotcha — `storage.session` access level
+
+`chrome.storage.session` defaults to `TRUSTED_CONTEXTS` only: extension pages and the service worker can read/write, **content scripts cannot**. A content script's `storage.onChanged` listener never sees `session`-area changes under the default, and direct `storage.session.get` from a content script errors with `Access to storage is not allowed from this context.`
+
+The background SW must explicitly opt in:
+
+```ts
+chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' });
+```
+
+Without this, the entire ADR-004 flow silently does nothing on SPA navigation: the SW writes the event, the content script never receives it, and the only way to activate MDR is a hard refresh (which triggers a fresh manifest injection and lets `initialize()` read the URL directly).
+
 ## Alternatives considered
 
 - **`chrome.tabs.sendMessage` from background.** Rejected: requires the receiver's listener to be live at exactly the moment of `sendMessage`; during nav this is a race. `storage.onChanged` doesn't have this problem.

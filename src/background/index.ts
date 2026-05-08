@@ -1,5 +1,11 @@
 const PR_CHANGES_RE = /^\/[^/]+\/[^/]+\/pull\/\d+\/changes/;
 
+// Allow content scripts to read storage.session and receive onChanged events.
+// Default access level is TRUSTED_CONTEXTS (extension pages + SW only).
+chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' }).catch((err) => {
+  console.warn('[MDR background] Could not set session access level', err);
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === 'mdr:getTabId') {
     sendResponse({ tabId: sender.tab?.id });
