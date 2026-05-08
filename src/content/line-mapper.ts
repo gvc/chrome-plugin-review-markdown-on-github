@@ -48,7 +48,9 @@ export function scrapeRawFromSourceDiff(
     );
     if (newNumCell) {
       lineNum = parseInt(newNumCell.getAttribute('data-line-number') ?? '', 10);
-      codeCell = row.querySelector<HTMLElement>('td.diff-text-cell[data-diff-side="right"]');
+      codeCell = row.querySelector<HTMLElement>(
+        'td.diff-text-cell[data-diff-side="right"], td.right-side-diff-cell'
+      );
     } else {
       const oldNumCell = row.querySelector<HTMLTableCellElement>(
         'td.blob-num-addition[data-line-number], td.blob-num-context[data-line-number]'
