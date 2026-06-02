@@ -6,9 +6,12 @@ export type OnCommentClick = (element: HTMLElement, match: LineMatch) => void;
 const HOVER_BUTTON_ID = 'mdr-hover-btn';
 let hoverButton: HTMLElement | null = null;
 let hideTimeout: ReturnType<typeof setTimeout> | null = null;
-let currentCallback: OnCommentClick | null = null;
-let currentLineMap: LineMapEntry[] | null = null;
-let currentFilePath: string | null = null;
+
+// Per-element context captured at the moment the button is shown — cleared on hide.
+// Avoids stale globals that caused cross-file comment misattribution.
+let pendingCallback: OnCommentClick | null = null;
+let pendingLineMap: LineMapEntry[] | null = null;
+let pendingFilePath: string | null = null;
 
 function getOrCreateHoverButton(): HTMLElement {
   if (hoverButton && document.body.contains(hoverButton)) return hoverButton;
@@ -38,12 +41,12 @@ function getOrCreateHoverButton(): HTMLElement {
     if (!target) return;
 
     const el = document.querySelector<HTMLElement>(`[data-mdr-id="${target}"]`);
-    if (!el || !currentLineMap || !currentFilePath || !currentCallback) return;
+    if (!el || !pendingLineMap || !pendingFilePath || !pendingCallback) return;
 
-    const match = matchElementToLine(el, currentLineMap, currentFilePath);
+    const match = matchElementToLine(el, pendingLineMap, pendingFilePath);
     if (match) {
       hideButton();
-      currentCallback(el, match);
+      pendingCallback(el, match);
     }
   });
 
@@ -51,11 +54,20 @@ function getOrCreateHoverButton(): HTMLElement {
   return hoverButton;
 }
 
-function showButton(target: HTMLElement): void {
+function showButton(
+  target: HTMLElement,
+  lineMap: LineMapEntry[],
+  filePath: string,
+  callback: OnCommentClick
+): void {
   if (hideTimeout) {
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
+
+  pendingLineMap = lineMap;
+  pendingFilePath = filePath;
+  pendingCallback = callback;
 
   const btn = getOrCreateHoverButton();
   const rect = target.getBoundingClientRect();
@@ -84,6 +96,9 @@ function hideButton(): void {
   if (hoverButton) {
     hoverButton.style.display = 'none';
   }
+  pendingLineMap = null;
+  pendingFilePath = null;
+  pendingCallback = null;
 }
 
 function scheduleHide(): void {
@@ -99,10 +114,6 @@ export function attachClickHandlers(
   filePath: string,
   onComment: OnCommentClick
 ): void {
-  currentCallback = onComment;
-  currentLineMap = lineMap;
-  currentFilePath = filePath;
-
   const elements = article.querySelectorAll<HTMLElement>(
     'p, h1, h2, h3, h4, h5, h6, li, blockquote > p, pre, th, td'
   );
@@ -117,7 +128,7 @@ export function attachClickHandlers(
       // Don't show on elements inside an open comment form or existing comment bubbles
       if (el.closest('.mdr-comment-form')) return;
       if (el.closest('.mdr-existing-comments')) return;
-      showButton(el);
+      showButton(el, lineMap, filePath, onComment);
     });
 
     el.addEventListener('mouseleave', () => {
