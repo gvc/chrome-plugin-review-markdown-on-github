@@ -15,7 +15,7 @@ render into DOM shapes that share no structure with their source form.
 > Key information users need to know to achieve their goal.
 
 > [!WARNING]
-> Urgent info that needs immediate user attention to avoid problems.
+> Urgent information that needs immediate attention to avoid problems.
 
 > [!CAUTION]
 > Advises about risks or negative outcomes of certain actions.
@@ -31,6 +31,9 @@ A plain blockquote directly after an alert, to check that the alert marker does
 not leak into the next block:
 
 > An ordinary quote with no alert marker.
+
+> [!TIP]
+> A second tip added in this revision, directly before the footnotes.
 
 ## Footnotes
 
@@ -55,8 +58,6 @@ Unicode emoji pass through unchanged: 🎉 ⚠️ 🚀 🐛
 ## Autolinked references
 
 An issue reference: #1
-
-A commit SHA reference: d293271
 
 A username-style handle that does not resolve: @fixture-bot-placeholder
 
@@ -134,6 +135,7 @@ graph TD
   A[Source blocks] --> B{Unique match?}
   B -->|yes| C[Anchor]
   B -->|no| D[Gap alignment]
+  D --> F[Score threshold]
   C --> E[Line map]
   D --> E
 ```

@@ -57,7 +57,7 @@ This proposal has no impact on existing behaviour and requires no migration.
 
 Some intervening prose so the repeats are not adjacent.
 
-This proposal has no impact on existing behaviour and requires no migration.
+This proposal changes existing behaviour and requires a one-time migration.
 
 More intervening prose, again to separate the repeated blocks.
 
@@ -67,7 +67,7 @@ This proposal has no impact on existing behaviour and requires no migration.
 
 TBD
 
-TBD
+Resolved in this revision
 
 TBD
 
@@ -107,7 +107,7 @@ Third list:
 | Requires token | No | No | No |
 | Reads source | Yes | Yes | Yes |
 | Writes source | No | No | No |
-| Requires network | No | No | No |
+| Requires network | No | Yes | Yes |
 | Requires token | No | No | No |
 
 ## Near-duplicate paragraphs
@@ -120,7 +120,7 @@ the score it used to decide, so a reviewer can confirm the target before
 submitting a comment.
 
 The mapper resolves each rendered block to exactly one source line, and reports
-the reason it used to decide, so a reviewer can confirm the target before
+the evidence it used to decide, so a reviewer can confirm the target before
 submitting a comment.
 
 ## Prefix-sharing paragraphs
