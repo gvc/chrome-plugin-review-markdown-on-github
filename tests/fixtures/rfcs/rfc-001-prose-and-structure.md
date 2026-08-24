@@ -30,7 +30,7 @@ A short paragraph on one line.
 This paragraph is deliberately wrapped across several source lines so that the
 rendered output collapses into a single element while the source keeps four
 separate entries. A line-oriented matcher sees four candidates and matches none
-of them exactly, which is the case that drives most of the fuzzy fallbacks in
+of them exactly, which is the case that drives most of the positional fallbacks in
 the current implementation.
 
 Two paragraphs separated by a blank line stay separate.
@@ -80,8 +80,6 @@ An autolink in angle brackets: <https://example.com/autolink>.
 
 A bare URL that GitHub autolinks: https://example.com/bare-url
 
-A link with a title attribute: [titled](https://example.com "Hover text").
-
 A link whose text contains formatting: [**bold link text**](https://example.com).
 
 ## Images
@@ -120,6 +118,9 @@ on subsequent lines and still belong to the quote.
 
 ## Thematic breaks
 
+A thematic break ends the preceding block, so the paragraph above and the
+paragraph below belong to different blocks even without a blank line.
+
 Three or more markers on their own line produce a rule.
 
 ---
@@ -139,7 +140,7 @@ non-breaking space that normalisation has to fold back to a plain space.
 
 Numeric entities work the same way: &#35; and &#x23; both produce a hash.
 
-## Mixed inline stress
+## Mixed inline stress cases
 
 A single paragraph combining **bold**, *italic*, `code`, ~~strikethrough~~, a
 [link](https://example.com), an ![image](https://example.com/i.png), an entity

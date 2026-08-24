@@ -9,8 +9,8 @@ closes; a table spans many source lines and renders as a grid of cells.
 A fence with a language tag:
 
 ```ts
-export function compute(input: number): number {
-  return input * 2;
+export function compute(input: number, factor = 2): number {
+  return input * factor;
 }
 ```
 
@@ -144,8 +144,9 @@ A row with fewer cells than the header renders with trailing empties:
 | `id` | string | yes | none | Unique identifier for the record |
 | `name` | string | yes | none | Human readable label shown in the UI |
 | `enabled` | boolean | no | `true` | Whether the record participates in matching |
-| `weight` | number | no | `1.0` | Relative weight applied during scoring |
+| `weight` | number | no | `0.5` | Relative weight applied during scoring |
 | `tags` | string[] | no | `[]` | Free-form labels used for filtering |
+| `score` | number | no | `0` | Similarity score recorded for the match |
 
 ## Repeated cell values
 
@@ -157,5 +158,5 @@ Identical cell text across many rows is the adversarial case for text matching.
 | Lists | Yes | N/A |
 | Tables | Yes | N/A |
 | Footnotes | Yes | N/A |
-| Definition lists | No | N/A |
+| Definition lists | No | Renders as a paragraph |
 | Custom containers | No | N/A |

@@ -17,6 +17,7 @@ Different markers produce the same rendered output but different source bytes.
 
 + Plus item one
 + Plus item two
++ Plus item three
 
 ## Ordered lists
 
@@ -63,6 +64,8 @@ tree has an extra level and a matcher can attach to the wrong node:
     - Level three, second item
   - Level two, second item
 - Level one, second item
+- Level one, third item
+  - Level two, added under the third item
 
 Mixed ordered and unordered nesting:
 
@@ -79,11 +82,11 @@ Mixed ordered and unordered nesting:
   element while the source holds one entry per line, exactly as a paragraph
   does, except the continuation lines carry indentation that has to be stripped
   before comparison.
-- A short item after the wrapped one.
+- A short item added after the wrapped one, with different wording.
 
 ## Task lists
 
-- [ ] Unchecked task
+- [x] Unchecked task, now completed
 - [x] Checked task
 - [ ] Another unchecked task
 - [X] Checked with a capital marker
