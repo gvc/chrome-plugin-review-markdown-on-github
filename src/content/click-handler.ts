@@ -43,10 +43,12 @@ function getOrCreateHoverButton(): HTMLElement {
     const el = document.querySelector<HTMLElement>(`[data-mdr-id="${target}"]`);
     if (!el || !pendingLineMap || !pendingFilePath || !pendingCallback) return;
 
+    // Snapshot before hideButton() — it clears the pending state.
+    const callback = pendingCallback;
     const match = matchElementToLine(el, pendingLineMap, pendingFilePath);
     if (match) {
       hideButton();
-      pendingCallback(el, match);
+      callback(el, match);
     }
   });
 
